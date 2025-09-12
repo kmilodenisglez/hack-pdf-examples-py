@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdf-signature-attack-simulator"
+version = "0.1.0"
+description = "Simulator of incremental update attacks on digitally signed PDFs"
+authors = [
+    { name = "Kmilo Denis", email = "kmilo.denis.glez@yandex.com" }
+]
+maintainers = [
+    { name = "Kmilo Denis", email = "kmilo.denis.glez@yandex.com" }
+]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Education",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Operating System :: POSIX :: Linux",
+]
+
+dependencies = [
+    "endesive>=1.1.0",
+    "pypdf>=3.0.0",
+    "PyPDF2; python_version<'3.7'",  # Optional, only if you need legacy compatibility
+    "fpdf2>=2.7.0",  # Better maintenance than original fpdf
+    "reportlab>=4.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black",
+    "flake8",
+]
+
+[project.scripts]
+run-pdf-attack = "pdf_signature_attack:main"  # Assume your script has if __name__ == "__main__"
