@@ -48,4 +48,6 @@ htmlcov/
 *.egg
 /test.db
 /coverage.xml
-/original.pdf
+/src/pdf_signature_attack/attacked_*.pdf
+/src/pdf_signature_attack/flattened.pdf
+/src/pdf_signature_attack/signed.pdf
