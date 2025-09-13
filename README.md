@@ -120,10 +120,10 @@ sudo apt install ghostscript   # Linux
 
 ```bash
 # PyMuPDF attack simulation
-python pdf_signature_attack_pymupdf.py
+python src/pdf_signature_attack/simulate_pdf_signature_attack_pymupdf.py
 
 # PikePDF attack simulation
-python pdf_signature_attack_pikepdf.py
+python src/pdf_signature_attack/simulate_pdf_signature_attack_pikepdf.py
 ```
 
 **Output:** Original, signed, attacked, and optionally flattened PDFs. Logs show signature detection, incremental update detection, and hash comparisons.
