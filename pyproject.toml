@@ -31,11 +31,17 @@ classifiers = [
 ]
 
 dependencies = [
-    "endesive>=1.1.0",
+    "endesive>=2.0",
     "pypdf>=3.0.0",
     "PyPDF2; python_version<'3.7'",  # Optional, only if you need legacy compatibility
     "fpdf2>=2.7.0",  # Better maintenance than original fpdf
     "reportlab>=4.0.0",
+    "cryptography>=45",
+    "requests>=2.32",
+    "asn1crypto>=1.5.1",
+    "pikepdf>=9.0",  # analizar si se queda esta library
+    "reportlab>=4.0",
+    "pymupdf>=1.26",
 ]
 
 [project.optional-dependencies]
@@ -46,4 +52,11 @@ dev = [
 ]
 
 [project.scripts]
-run-pdf-attack = "pdf_signature_attack:main"  # Assume your script has if __name__ == "__main__"
+run-pdf-attack = "simulate_pdf_signature_attack_pikepdf:main"  # Assume your script has if __name__ == "__main__"
+
+
+#[tool.setuptools]
+#py-modules = ["pdf_signature_attack", "pdf_signature_attack_ng"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
