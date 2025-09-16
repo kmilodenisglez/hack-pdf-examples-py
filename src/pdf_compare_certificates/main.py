@@ -27,10 +27,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(mes
 log = logging.getLogger(__name__)
 
 # Default certificate filenames (can be overridden by env vars)
-CERT_FEA = os.environ.get("CERT_FEA", "cert_fea.pem")
-KEY_FEA = os.environ.get("KEY_FEA", "key_fea.pem")
-CERT_FEC = os.environ.get("CERT_FEC", "cert_fec.pem")
-KEY_FEC = os.environ.get("KEY_FEC", "key_fec.pem")
+CERT_FEA = os.environ.get("CERT_FEA", "certs/cert_fea.pem")
+KEY_FEA = os.environ.get("KEY_FEA", "certs/key_fea.pem")
+CERT_FEC = os.environ.get("CERT_FEC", "certs/cert_fec.pem")
+KEY_FEC = os.environ.get("KEY_FEC", "certs/key_fec.pem")
 
 
 # -----------------------
@@ -268,7 +268,7 @@ def print_verification_result(res):
 # -----------------------
 # Generate / Verify flows
 # -----------------------
-def generate_certificates(outdir="."):
+def generate_certificates(outdir="./outputs"):
     """
     Create unsigned, FEA-signed and FEC-signed sample certificates in outdir.
     """
@@ -500,55 +500,109 @@ def path_in(outdir, filename):
     return os.path.join(outdir, filename)
 
 def main():
-    parser = argparse.ArgumentParser(description="Workshop 1: Vulnerabilities in Digital Certificates")
-    sub = parser.add_subparsers(dest="action", required=True)
+    import argparse
 
-    sub.add_parser("generate", help="Generate unsigned and signed sample certificates")
-    sub.add_parser("verify", help="Verify student edited files (files must exist: *_EDITED.pdf)")
-    sub.add_parser("all", help="Generate, wait for manual edits, then verify")
-    sim = sub.add_parser("simulate", help="Simulate attacks against signed PDFs")
-    sim.add_argument("--mode", choices=["incremental_rewrite", "incremental_pikepdf"], required=True,
-                     help="Attack mode to simulate")
+    # ---------------------------
+    # Parent parser with global options
+    # ---------------------------
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    parent_parser.add_argument(
+        "--outdir",
+        default=".",
+        help="Output directory for generated/verified files"
+    )
+    parent_parser.add_argument(
+        "--report",
+        action="store_true",
+        help="Produce an HTML report summarizing results"
+    )
 
-    parser.add_argument("--outdir", default=".", help="Output directory to write/generated files")
-    parser.add_argument("--report", action="store_true", help="Produce an HTML report summarizing results")
+    # ---------------------------
+    # Root parser with subcommands
+    # ---------------------------
+    parser = argparse.ArgumentParser(
+        description="Workshop 1: Vulnerabilities in Digital Certificates"
+    )
+    subparsers = parser.add_subparsers(
+        dest="action",
+        help="Available actions"
+    )
+
+    # Subcommands inherit global args from parent_parser
+    subparsers.add_parser("generate", parents=[parent_parser], help="Generate unsigned and signed certificates")
+    subparsers.add_parser("verify", parents=[parent_parser], help="Verify student edited files")
+    subparsers.add_parser("all", parents=[parent_parser], help="Generate, wait for manual edits, then verify")
+
+    # Simulate attacks
+    sim = subparsers.add_parser("simulate", parents=[parent_parser], help="Simulate attacks against signed PDFs")
+    sim.add_argument(
+        "--mode",
+        choices=["incremental_rewrite", "incremental_pikepdf"],
+        required=True,
+        help="Attack mode to simulate"
+    )
+
+    # ---------------------------
+    # Parse arguments
+    # ---------------------------
     args = parser.parse_args()
 
+    # Ensure output directory exists
     outdir = ensure_outdir(args.outdir)
     report_path = path_in(outdir, "verification_report.html") if args.report else None
 
-    # preflight checks
+    # ---------------------------
+    # Preflight checks
+    # ---------------------------
     require_attack = (args.action == "simulate")
     missing = preflight_check(require_attack=require_attack)
     if missing:
         print("Preflight check failed. Missing items:")
         for m in missing:
             print(" -", m)
-        print("\nInstall missing packages or provide certificate files before proceeding.")
         sys.exit(2)
 
+    # ---------------------------
+    # Dispatch actions
+    # ---------------------------
     if args.action == "generate":
         generate_certificates(outdir=outdir)
+
     elif args.action == "verify":
         verify_student_modifications(outdir=outdir, generate_report=args.report, report_path=report_path)
+
     elif args.action == "all":
+        # Generate certificates
         generate_certificates(outdir=outdir)
         print("📌 STUDENT INSTRUCTIONS:")
         print("1. Open 'cert_fea.pdf' in Adobe/Word and change grade to '20/20'.")
-        print("2. Try editing 'cert_fec.pdf' (should invalidate signature in many readers).")
+        print("2. Try editing 'cert_fec.pdf' (should invalidate signature).")
         print("3. Edit 'cert_plain.pdf' freely.")
-        print("4. Save as: cert_fea_EDITED.pdf, cert_fec_EDITED.pdf, cert_plain_EDITED.pdf")
+        print("4. Save as *_EDITED.pdf")
         input("\n➡️ Press ENTER when finished editing the files...")
+
+        # Verify edited files
         results = verify_student_modifications(outdir=outdir, generate_report=args.report, report_path=report_path)
         if args.report:
             write_html_report(results, report_path)
             log.info("📊 HTML report written to %s", report_path)
+
     elif args.action == "simulate":
-        results = simulate_attacks(mode=args.mode, outdir=outdir, report=args.report, report_path=report_path)
+        # Run attack simulation
+        results = simulate_attacks(
+            mode=args.mode,
+            outdir=outdir,
+            report=args.report,
+            report_path=report_path
+        )
         if args.report and not report_path:
             write_html_report(results, path_in(outdir, "verification_report.html"))
+
     else:
+        # No valid action provided
         parser.print_help()
+
+
 
 if __name__ == "__main__":
     main()

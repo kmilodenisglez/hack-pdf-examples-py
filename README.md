@@ -1,12 +1,15 @@
-# PDF Signature Attack Simulation
+# PDF Signature Attack Examples (Python)
 
-This repository demonstrates **PDF signature attacks** using Python, simulating scenarios where an official PDF is signed and then modified. It includes two approaches for simulating **incremental attacks**: one using **PyMuPDF** and another using **PikePDF**.
+Educational repository with two subprojects to demonstrate and teach digital signature attacks and verification on PDFs.
+
+- `src/pdf_signature_attack/`: simulate incremental attacks on a signed PDF (PikePDF / PyMuPDF) with basic/advanced verification.
+- `src/pdf_compare_certificates/`: workshop to generate certificates (unsigned, FEA, FEC), edit them manually, and then verify tampering.
 
 ---
 
-## Quickstart
+## Requirements and installation (centralized here)
 
-1. **Create a Python virtual environment (recommended)**
+1) Create and activate a Python 3.10+ virtual environment (recommended)
 
 ```bash
 python -m venv ./venv
@@ -15,28 +18,89 @@ source ./venv/bin/activate  # Linux/macOS
 .\venv\Scripts\activate     # Windows
 ```
 
-2. **Generate a test certificate (optional)**
-
-```bash
-openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 \
--nodes -subj "/CN=Universidad Segura" -set_serial 1
-```
-
-3. **Install dependencies**
+2) Install project dependencies (editable from `pyproject.toml`)
 
 ```bash
 pip install -e .
 ```
 
-4. **Optional: Install Ghostscript for flattening**
+3) (Optional) System tools for extra operations
 
 ```bash
-sudo apt install ghostscript   # Linux
+sudo apt install ghostscript qpdf   # Linux
+```
+
+4) (Optional) Generate test certificates (if you don’t have your own PEMs)
+
+```bash
+openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 \
+  -nodes -subj "/CN=Secure University" -set_serial 1
 ```
 
 ---
 
-## Workflow Diagram
+## Project structure
+
+```
+hack-pdf-examples-py/
+├─ README.md                        # Este archivo (instalación y visión general)
+├─ pyproject.toml                   # Dependencias y metadata del paquete
+├─ src/
+│  ├─ pdf_signature_attack/         # Subproyecto 1 (ataques incrementales)
+│  │  ├─ README.md                  # Cómo ejecutar el subproyecto
+│  │  └─ simulate_*.py              # Scripts de simulación
+│  └─ pdf_compare_certificates/     # Subproyecto 2 (taller/verificación)
+│     ├─ README.md                  # Cómo ejecutar el subproyecto
+│     └─ main.py                    # CLI del taller
+└─ venv/                            # Entorno virtual (opcional)
+```
+
+---
+
+## Quick usage per subproject
+
+See each subproject’s README for details and options.
+
+### 1) PDF signature attacks (`src/pdf_signature_attack/`)
+
+```bash
+# Attack using PyMuPDF
+python src/pdf_signature_attack/simulate_pdf_signature_attack_pymupdf.py
+
+# Attack using PikePDF
+python src/pdf_signature_attack/simulate_pdf_signature_attack_pikepdf.py
+```
+
+Expected outputs: `original.pdf`, `signed.pdf`, `attacked_rewrite.pdf`, `attacked_incremental_*.pdf`, `flattened.pdf`.
+
+### 2) Certificate comparison workshop (`src/pdf_compare_certificates/`)
+
+```bash
+# Generate PDFs (unsigned, FEA, FEC)
+python src/pdf_compare_certificates/main.py generate --outdir outputs
+
+# Verify *_EDITED.pdf files (after manual edits)
+python src/pdf_compare_certificates/main.py verify --outdir outputs --report
+
+# Full flow (generate → manual edit → verify)
+python src/pdf_compare_certificates/main.py all --outdir outputs --report
+
+# Simulate attacks on signed PDFs (FEA/FEC)
+python src/pdf_compare_certificates/main.py simulate --mode incremental_pikepdf --outdir outputs --report
+```
+
+Optional environment variables for PEM certificate paths (if using custom files):
+
+```
+CERT_FEA=cert_fea.pem
+KEY_FEA=key_fea.pem
+CERT_FEC=cert_fec.pem
+KEY_FEC=key_fec.pem
+```
+
+---
+
+## High-level flow diagram
 
 ### ASCII Flowchart
 
@@ -101,29 +165,18 @@ sudo apt install ghostscript   # Linux
 +-------------------------+
 ```
 
-#### How to Read the Diagram
+#### How to read the diagram
 
-1. **Create Original PDF**: generates a PDF with sample data (e.g., academic certificate).
-2. **Sign PDF**: applies a digital signature using Endesive → `signed.pdf`.
-3. **Attack Variants**: three simulated modifications:
-
-    * **Incremental Rewrite**: destroys the signature.
-    * **PyMuPDF Incremental**: adds a page without overwriting the signature, but full-content validation fails.
-    * **PikePDF Incremental**: similar to PyMuPDF, partially preserves the original signature.
-4. **Basic Verification**: detects if signatures exist.
-5. **Advanced Detection**: compares hashes and internal structures (`startxref/%%EOF`) to detect modifications.
-6. **Flattening**: produces a safe, consolidated PDF preventing incremental attacks, but removes signatures.
+1. Create original PDF.
+2. Sign with Endesive → `signed.pdf`.
+3. Attack (rewrite or incremental) → `attacked_*.pdf`.
+4. Basic verification (signatures) and advanced checks (hashes, `startxref/%%EOF`).
+5. Flattening to prevent incremental attacks (removes signatures).
 
 ---
 
-## Usage
+## Notes
 
-```bash
-# PyMuPDF attack simulation
-python src/pdf_signature_attack/simulate_pdf_signature_attack_pymupdf.py
-
-# PikePDF attack simulation
-python src/pdf_signature_attack/simulate_pdf_signature_attack_pikepdf.py
-```
-
-**Output:** Original, signed, attacked, and optionally flattened PDFs. Logs show signature detection, incremental update detection, and hash comparisons.
+- Educational repository; not intended to promote malicious use.
+- Results may vary across PDF viewers (Adobe Reader, browsers, etc.).
+- Flattening removes digital signatures; use only when content consolidation is desired.
