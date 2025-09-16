@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Taller 1 - Vulnerabilidades en certificados digitales (corregido)
+Taller 1 - Vulnerabilidades en certificados digitales (CLI mejorado)
 
 Dependencias:
     pip install endesive fpdf2 pikepdf cryptography
@@ -17,12 +17,13 @@ import logging
 from fpdf import FPDF
 from endesive.pdf.verify import verify
 import pikepdf
+import argparse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
 
 # -----------------------
-# UTILIDADES
+# FUNCIONES
 # -----------------------
 def create_sample_pdf(name="John Doe", course="Curso", grade="14/20", path="temp.pdf"):
     pdf = FPDF()
@@ -39,10 +40,6 @@ def create_sample_pdf(name="John Doe", course="Curso", grade="14/20", path="temp
     return path
 
 def sign_pdf(pdf_in, cert_pem, key_pem, output, is_qualified=False):
-    """
-    Firma un PDF con Endesive (FEA o FEC) y asegura que sea compatible con lectores.
-    """
-    import os
     import logging
     from datetime import datetime, timezone
     from endesive.pdf import cms
@@ -51,11 +48,8 @@ def sign_pdf(pdf_in, cert_pem, key_pem, output, is_qualified=False):
     from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
     log = logging.getLogger(__name__)
-
-    # Leer PDF original
     with open(pdf_in, "rb") as f:
         data = f.read()
-    # Leer certificado y clave
     with open(cert_pem, "rb") as f:
         cert_bytes = f.read()
     with open(key_pem, "rb") as f:
@@ -63,7 +57,6 @@ def sign_pdf(pdf_in, cert_pem, key_pem, output, is_qualified=False):
     cert = load_pem_x509_certificate(cert_bytes, default_backend())
     key = load_pem_private_key(key_bytes, password=None, backend=default_backend())
 
-    # Diccionario de firma
     date = datetime.now(timezone.utc).strftime("D:%Y%m%d%H%M%S+00'00'")
     dct = {
         'sigpage': 0,
@@ -76,16 +69,13 @@ def sign_pdf(pdf_in, cert_pem, key_pem, output, is_qualified=False):
         'reason': 'Certificado oficial',
     }
 
-    # Generar bytes de la firma
     signed_bytes = cms.sign(datau=data, udct=dct, key=key, cert=cert, othercerts=[cert], algomd='sha256')
 
-    # Guardar PDF final: concatenar PDF original + firma
     with open(output, "wb") as f:
         f.write(data + signed_bytes)
 
     log.info("🔒 PDF firmado y compatible guardado: %s", output)
     return output
-
 
 def compute_hash(pdf_path):
     h = hashlib.sha256()
@@ -107,18 +97,12 @@ def extract_text(pdf_path):
 def verify_certificate(original_path, modified_path, label=""):
     print(f"\n🔍 VERIFICANDO: {label}")
     print("="*60)
-
-    # Comparación de hashes
     orig_hash = compute_hash(original_path)
     mod_hash = compute_hash(modified_path) if os.path.exists(modified_path) else "N/A"
     print(f"   Hash Original: {orig_hash}")
     print(f"   Hash Modificado: {mod_hash}")
-    if orig_hash != mod_hash:
-        print("   ❌ ¡Contenido modificado! (Hash no coincide)")
-    else:
-        print("   ✅ Contenido no modificado (Hash coincide)")
+    print("   ❌ ¡Contenido modificado! (Hash no coincide)" if orig_hash != mod_hash else "   ✅ Contenido no modificado (Hash coincide)")
 
-    # Verificación de firmas
     try:
         with open(modified_path, 'rb') as f: data = f.read()
         result = verify(data)
@@ -132,52 +116,31 @@ def verify_certificate(original_path, modified_path, label=""):
     except Exception as e:
         print(f"   ❌ Error verificando firma: {e}")
 
-    # Detección de modificaciones incrementales
     with open(modified_path, 'rb') as f:
         content = f.read()
     startxref = content.count(b'startxref')
     eof = content.count(b'%%EOF')
     print(f"   startxref: {startxref}, %%EOF: {eof}")
-    if startxref > 1 or eof > 1:
-        print("   ⚠️  ¡Actualización incremental detectada! (Posible manipulación)")
-    else:
-        print("   ✅ Sin actualizaciones incrementales detectadas.")
+    print("   ⚠️  ¡Actualización incremental detectada! (Posible manipulación)" if startxref > 1 or eof > 1 else "   ✅ Sin actualizaciones incrementales detectadas.")
 
-    # Mostrar extracto de texto
-    print("\n   Extracto de texto de las primeras 100 letras por página:")
     texts = extract_text(modified_path)
+    print("\n   Extracto de texto de las primeras 100 letras por página:")
     for i, t in enumerate(texts):
         snippet = t[:100] if t else "[Vacío]"
         print(f"      Página {i+1}: {snippet}")
     print("="*60)
 
-# -----------------------
-# GENERAR CERTIFICADOS
-# -----------------------
 def generate_certificates():
-    # Sin firma
     create_sample_pdf(name="Carlos Pérez", course="Ciberseguridad", grade="16/20", path="cert_plain.pdf")
-    # FEA
     create_sample_pdf(name="Ana Gómez", course="Blockchain", grade="14/20", path="temp_fea.pdf")
     sign_pdf("temp_fea.pdf", "cert_fea.pem", "key_fea.pem", "cert_fea.pdf", is_qualified=False)
-    # FEC/QES
     create_sample_pdf(name="Luis Fernández", course="Criptografía", grade="18/20", path="temp_fec.pdf")
     sign_pdf("temp_fec.pdf", "cert_fec.pem", "key_fec.pem", "cert_fec.pdf", is_qualified=True)
-
-    # Limpiar temporales
     for f in ["temp_fea.pdf", "temp_fec.pdf"]:
         if os.path.exists(f): os.remove(f)
+    print("\n✅ Certificados generados con éxito.\n")
 
-    print("\n✅ Certificados generados:")
-    print("   - cert_plain.pdf → Sin firma (editable libremente)")
-    print("   - cert_fea.pdf → Firma Electrónica Avanzada (FEA) → Vulnerable")
-    print("   - cert_fec.pdf → Firma Electrónica Cualificada (FEC/QES) → Protegida\n")
-
-# -----------------------
-# VERIFICAR ARCHIVOS EDITADOS
-# -----------------------
 def verify_student_modifications():
-    print("\n\n🔎 VERIFICANDO MANIPULACIONES HECHAS POR ESTUDIANTES")
     files_to_check = [
         ("cert_fea.pdf", "cert_fea_EDITADO.pdf", "CERTIFICADO FEA MODIFICADO"),
         ("cert_fec.pdf", "cert_fec_EDITADO.pdf", "CERTIFICADO FEC MODIFICADO"),
@@ -190,26 +153,26 @@ def verify_student_modifications():
         verify_certificate(original, modified, label)
 
 # -----------------------
-# MAIN
+# MAIN CON ARGPARSE
 # -----------------------
 def main():
-    print("🎓 TALLER 1: VULNERABILIDADES EN CERTIFICADOS DIGITALES\n")
-    generate_certificates()
+    parser = argparse.ArgumentParser(description="Taller 1: Vulnerabilidades en certificados digitales")
+    parser.add_argument('action', choices=['generate', 'verify', 'all'], help="Acción a ejecutar")
+    args = parser.parse_args()
 
-    print("📌 INSTRUCCIONES PARA ESTUDIANTES:")
-    print("1. Abran 'cert_fea.pdf' con Adobe Acrobat o Word y cambien la calificación a '20/20'.")
-    print("2. Intenten hacer lo mismo con 'cert_fec.pdf' (debería invalidar la firma).")
-    print("3. Editen 'cert_plain.pdf' libremente.")
-    print("4. Guarden los archivos modificados como:")
-    print("   - cert_fea_EDITADO.pdf")
-    print("   - cert_fec_EDITADO.pdf")
-    print("   - cert_plain_EDITADO.pdf")
-    input("\n➡️ Presionen ENTER cuando hayan terminado de editar los archivos...")
-
-    verify_student_modifications()
-    print("\n✅ Taller completado. Discusión en equipos: ¿Qué implica esto para la confianza en certificados educativos?")
+    if args.action == 'generate':
+        generate_certificates()
+    elif args.action == 'verify':
+        verify_student_modifications()
+    elif args.action == 'all':
+        generate_certificates()
+        print("📌 INSTRUCCIONES PARA ESTUDIANTES:")
+        print("1. Abran 'cert_fea.pdf' con Adobe/Word y cambien calificación a '20/20'.")
+        print("2. Intenten modificar 'cert_fec.pdf' (debería invalidar la firma).")
+        print("3. Editen 'cert_plain.pdf' libremente.")
+        print("4. Guarden como: cert_fea_EDITADO.pdf, cert_fec_EDITADO.pdf, cert_plain_EDITADO.pdf")
+        input("\n➡️ Presionen ENTER cuando hayan terminado de editar los archivos...")
+        verify_student_modifications()
 
 if __name__ == "__main__":
     main()
-
-
