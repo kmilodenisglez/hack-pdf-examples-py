@@ -29,12 +29,21 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+# Create outputs directory
+OUTPUTS_DIR = "outputs"
+if not os.path.exists(OUTPUTS_DIR):
+    os.makedirs(OUTPUTS_DIR)
+    log.info("✅ Created outputs directory: %s", OUTPUTS_DIR)
+
 
 # -----------------------
 # STEP 1: Create original PDF
 # -----------------------
-def create_original_pdf(path="original.pdf"):
+def create_original_pdf(path=None):
     from fpdf import FPDF
+
+    if path is None:
+        path = os.path.join(OUTPUTS_DIR, "original.pdf")
 
     if os.path.exists(path):
         log.info("Original PDF already exists: %s", path)
@@ -57,11 +66,16 @@ def create_original_pdf(path="original.pdf"):
 # -----------------------
 # STEP 2: Sign PDF
 # -----------------------
-def sign_pdf(pdf_in="original.pdf", cert_pem_path="cert.pem", key_pem_path="key.pem", out="signed.pdf"):
+def sign_pdf(pdf_in=None, cert_pem_path="certs/cert.pem", key_pem_path="certs/key.pem", out=None):
     import endesive.pdf.cms as cms
     from cryptography.hazmat.backends import default_backend
     from cryptography.x509 import load_pem_x509_certificate
     from cryptography.hazmat.primitives.serialization import load_pem_private_key
+
+    if pdf_in is None:
+        pdf_in = os.path.join(OUTPUTS_DIR, "original.pdf")
+    if out is None:
+        out = os.path.join(OUTPUTS_DIR, "signed.pdf")
 
     with open(cert_pem_path, "rb") as f:
         cert_pem = f.read()
@@ -104,11 +118,16 @@ def sign_pdf(pdf_in="original.pdf", cert_pem_path="cert.pem", key_pem_path="key.
 # -----------------------
 # STEP 3a: Incremental rewrite attack (does NOT preserve signature)
 # -----------------------
-def incremental_rewrite_attack(signed_pdf="signed.pdf", out="attacked_rewrite.pdf"):
+def incremental_rewrite_attack(signed_pdf=None, out=None):
     from pypdf import PdfReader, PdfWriter
     from reportlab.pdfgen import canvas
     from reportlab.lib.colors import red
     from io import BytesIO
+
+    if signed_pdf is None:
+        signed_pdf = os.path.join(OUTPUTS_DIR, "signed.pdf")
+    if out is None:
+        out = os.path.join(OUTPUTS_DIR, "attacked_rewrite.pdf")
 
     reader = PdfReader(signed_pdf)
     writer = PdfWriter()
@@ -129,18 +148,23 @@ def incremental_rewrite_attack(signed_pdf="signed.pdf", out="attacked_rewrite.pd
 
     with open(out, "wb") as fp:
         writer.write(fp)
-    log.warning("🔴 Incremental rewrite attack applied (does NOT preserve signature)")
+    log.warning("🔴 Incremental rewrite attack applied (does NOT preserve signature): %s", out)
     return out
 
 
 # -----------------------
 # STEP 3b: Real incremental attack using PikePDF
 # -----------------------
-def incremental_pikepdf_attack(signed_pdf="signed.pdf", out="attacked_incremental_pikepdf.pdf"):
+def incremental_pikepdf_attack(signed_pdf=None, out=None):
     import pikepdf
     from reportlab.pdfgen import canvas
     from io import BytesIO
     import tempfile
+
+    if signed_pdf is None:
+        signed_pdf = os.path.join(OUTPUTS_DIR, "signed.pdf")
+    if out is None:
+        out = os.path.join(OUTPUTS_DIR, "attacked_incremental_pikepdf.pdf")
 
     packet = BytesIO()
     can = canvas.Canvas(packet, pagesize=(595, 842))
@@ -222,9 +246,14 @@ def basic_verification(pdf_path, original_signed=None):
 # -----------------------
 # STEP 5: Detect incremental update / modifications
 # -----------------------
-def detect_incremental_update_advanced(signed="signed.pdf", attacked="attacked_incremental.pdf"):
+def detect_incremental_update_advanced(signed=None, attacked=None):
     import hashlib
     import re
+
+    if signed is None:
+        signed = os.path.join(OUTPUTS_DIR, "signed.pdf")
+    if attacked is None:
+        attacked = os.path.join(OUTPUTS_DIR, "attacked_incremental_pikepdf.pdf")
 
     def count_start_eof(path):
         with open(path, "rb") as f:
@@ -263,8 +292,14 @@ def detect_incremental_update_advanced(signed="signed.pdf", attacked="attacked_i
 # -----------------------
 # STEP 6: Flattening
 # -----------------------
-def apply_flattening_pypdf(input_pdf="attacked_incremental_pikepdf.pdf", out="flattened.pdf"):
+def apply_flattening_pypdf(input_pdf=None, out=None):
     from pypdf import PdfReader, PdfWriter
+
+    if input_pdf is None:
+        input_pdf = os.path.join(OUTPUTS_DIR, "attacked_incremental_pikepdf.pdf")
+    if out is None:
+        out = os.path.join(OUTPUTS_DIR, "flattened.pdf")
+
     reader = PdfReader(input_pdf)
     writer = PdfWriter()
     for p in reader.pages:
@@ -279,8 +314,8 @@ def apply_flattening_pypdf(input_pdf="attacked_incremental_pikepdf.pdf", out="fl
 # MAIN FLOW
 # -----------------------
 def main():
-    create_original_pdf()
-    signed = sign_pdf()
+    original = create_original_pdf()
+    signed = sign_pdf(original)
     attacked_rewrite = incremental_rewrite_attack(signed)
     attacked_pike = incremental_pikepdf_attack(signed)
 
