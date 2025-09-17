@@ -2,6 +2,8 @@
 
 Este documento explica en detalle cómo funciona el script `simulate_pdf_signature_attack_pikepdf.py`, enfocándose en **firmas digitales en PDFs, ataques incrementales y métodos de detección**. Está diseñado con fines educativos y demostrativos.
 
+**Instalación**: Ver la sección "Requirements and installation" en el `README.md` raíz.
+
 ---
 
 ## 1. Propósito del Script
@@ -12,8 +14,8 @@ Este documento explica en detalle cómo funciona el script `simulate_pdf_signatu
 2. Firmarlo digitalmente con **Endesive**.
 3. Aplicar dos tipos de ataques:
 
-* **Incremental Rewrite Attack** → sobrescribe el PDF y **rompe la firma**.
-* **Incremental PikePDF Attack** → agrega una página como actualización incremental, preservando parcialmente la firma.
+  * **Incremental Rewrite Attack** → sobrescribe el PDF y **rompe la firma**.
+  * **Incremental PikePDF Attack** → agrega una página como actualización incremental, preservando parcialmente la firma.
 4. Realizar **verificación básica** de firmas.
 5. Realizar **detección avanzada** de modificaciones incrementales.
 6. Aplicar **flattening** para prevenir ataques incrementales adicionales.
@@ -22,39 +24,23 @@ Este documento explica en detalle cómo funciona el script `simulate_pdf_signatu
 
 ---
 
-## 2. Requisitos
-
-Python >= 3.9 y los siguientes paquetes:
-
-```bash
-pip install endesive cryptography pypdf reportlab fpdf2 pikepdf
-```
-
-Herramientas opcionales para flattening u optimización:
-
-```bash
-sudo apt install qpdf ghostscript
-```
-
----
-
-## 3. Flujo General
+## 2. Flujo General
 
 1. **Crear PDF original** → `outputs/original.pdf`
 2. **Firmar PDF** → `outputs/signed.pdf`
 3. **Aplicar ataques**:
 
-* `outputs/attacked_rewrite.pdf` → destruye la firma.
-* `outputs/attacked_incremental_pikepdf.pdf` → preserva parcialmente la firma original mientras añade páginas.
+  * `outputs/attacked_rewrite.pdf` → destruye la firma.
+  * `outputs/attacked_incremental_pikepdf.pdf` → preserva parcialmente la firma original mientras añade páginas.
 4. **Verificación básica** → detecta firmas, imprime hashes y marcadores.
 5. **Detección avanzada** → compara marcadores `startxref/%%EOF` y hashes SHA-256.
 6. **Flattening** → `outputs/flattened.pdf` para consolidar el PDF y prevenir ataques incrementales.
 
 ---
 
-## 4. Detalle de Funciones
+## 3. Detalle de Funciones
 
-### 4.1 `create_original_pdf(path=None)`
+### 3.1 `create_original_pdf(path=None)`
 
 * **Propósito**: Generar un PDF de ejemplo (certificado académico).
 * **Implementación**: Usa `FPDF` para crear una página con campos como nombre, curso, calificación y fecha.
@@ -64,7 +50,7 @@ sudo apt install qpdf ghostscript
 
 ---
 
-### 4.2 `sign_pdf(pdf_in=None, cert_pem_path="certs/cert.pem", key_pem_path="certs/key.pem", out=None)`
+### 3.2 `sign_pdf(pdf_in=None, cert_pem_path="certs/cert.pem", key_pem_path="certs/key.pem", out=None)`
 
 * **Propósito**: Firmar digitalmente un PDF usando **Endesive**.
 * **Implementación**:
@@ -77,7 +63,7 @@ sudo apt install qpdf ghostscript
 
 ---
 
-### 4.3 `incremental_rewrite_attack(signed_pdf=None, out=None)`
+### 3.3 `incremental_rewrite_attack(signed_pdf=None, out=None)`
 
 * **Propósito**: Simular un ataque destructivo que agrega una página maliciosa y **rompe la firma**.
 * **Implementación**:
@@ -89,7 +75,7 @@ sudo apt install qpdf ghostscript
 
 ---
 
-### 4.4 `incremental_pikepdf_attack(signed_pdf=None, out=None)`
+### 3.4 `incremental_pikepdf_attack(signed_pdf=None, out=None)`
 
 * **Propósito**: Simular un **ataque incremental real** que agrega una página preservando parcialmente la firma original.
 * **Implementación**:
@@ -102,7 +88,7 @@ sudo apt install qpdf ghostscript
 
 ---
 
-### 4.5 `basic_verification(pdf_path, original_signed=None)`
+### 3.5 `basic_verification(pdf_path, original_signed=None)`
 
 * **Propósito**: Detectar firmas y proporcionar una visión básica de integridad.
 * **Incluye**:
@@ -114,7 +100,7 @@ sudo apt install qpdf ghostscript
 
 ---
 
-### 4.6 `detect_incremental_update_advanced(signed=None, attacked=None)`
+### 3.6 `detect_incremental_update_advanced(signed=None, attacked=None)`
 
 * **Propósito**: Detectar **actualizaciones incrementales y cambios de contenido**.
 * **Implementación**:
@@ -127,7 +113,7 @@ sudo apt install qpdf ghostscript
 
 ---
 
-### 4.7 `apply_flattening_pypdf(input_pdf=None, out=None)`
+### 3.7 `apply_flattening_pypdf(input_pdf=None, out=None)`
 
 * **Propósito**: Consolidar las páginas del PDF en un **archivo lineal único**, previniendo ataques incrementales.
 * **Implementación**:
@@ -139,7 +125,7 @@ sudo apt install qpdf ghostscript
 
 ---
 
-## 5. Flujo Principal (`main()`)
+## 4. Flujo Principal (`main()`)
 
 1. Generar PDF original → `outputs/original.pdf`.
 2. Firmar PDF → `outputs/signed.pdf`.
@@ -150,7 +136,7 @@ sudo apt install qpdf ghostscript
 
 ---
 
-## 6. Estructura de Archivos
+## 5. Estructura de Archivos
 
 ```
 pdf_signature_attack/
@@ -168,7 +154,7 @@ pdf_signature_attack/
 
 ---
 
-## 7. Uso en Conferencias/Talleres
+## 6. Uso en Conferencias/Talleres
 
 * **Demostración paso a paso**: ejecutar cada función individualmente para ilustrar los efectos de la firma.
 * **Comparación visual**: comparar archivos en la carpeta `outputs/`: `signed.pdf`, `attacked_rewrite.pdf` y `attacked_incremental_pikepdf.pdf`.
@@ -177,7 +163,7 @@ pdf_signature_attack/
 
 ---
 
-## 8. Mejoras en Esta Versión
+## 7. Mejoras en Esta Versión
 
 * **Organización de archivos**: Todos los PDFs se generan en la carpeta `outputs/`.
 * **Creación automática**: La carpeta `outputs/` se crea automáticamente si no existe.
@@ -187,7 +173,7 @@ pdf_signature_attack/
 
 ---
 
-## 9. Conclusión
+## 8. Conclusión
 
 * Este script es una **herramienta educativa sobre seguridad en PDFs**, mostrando diferencias entre **ataques destructivos vs incrementales**.
 * Demuestra métodos de **verificación, detección y mitigación**.

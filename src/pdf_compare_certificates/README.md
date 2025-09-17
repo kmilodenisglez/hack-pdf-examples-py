@@ -33,13 +33,20 @@ python main.py simulate --mode incremental_pikepdf --outdir outputs --report
 python main.py verify --outdir outputs --report
 ```
 
-### 4) Assisted flow (generate → manual edit → verify)
+### 4) Manual workshop flow
 
 ```bash
-python main.py all --outdir outputs --report
+# Step 1: Generate certificates
+python main.py generate --outdir outputs --report
+
+# Step 2: Manual editing (see instructions below)
+# ... edit the PDFs manually ...
+
+# Step 3: Verify the edited files
+python main.py verify --outdir outputs --report
 ```
 
-**Student instructions (manual edits in the `all` flow):**
+**Student instructions for manual editing:**
 
 1. Open `cert_fea.pdf` in Adobe/Word and change the grade to `20/20`.
 2. Try editing `cert_fec.pdf` (this should invalidate the signature in most PDF readers).
@@ -49,8 +56,6 @@ python main.py all --outdir outputs --report
     * `cert_fea_EDITED.pdf`
     * `cert_fec_EDITED.pdf`
     * `cert_plain_EDITED.pdf`
-
-Press ENTER when finished editing the files to continue verification.
 
 ---
 
@@ -76,7 +81,8 @@ KEY_FEC=key_fec.pem
 * Generates sample PDFs and signs with Endesive (for FEA/FEC).
 * Detects present signatures (basic) and evidence of incremental updates (`startxref`, `%%EOF`).
 * Compares hashes and extracts text snippets to help identify changes.
-* Provides guided instructions for manual editing to demonstrate signature validation and tampering.
+* Simulates incremental attacks on signed PDFs to demonstrate vulnerabilities.
+* Provides clear separation between generation, manual editing, and verification phases.
 
 ---
 

@@ -1,6 +1,8 @@
 # PDF Signature Attack Simulation
 
-This subproject demonstrates incremental attacks on a signed PDF and how to detect them. It generates `original.pdf`, signs it (`signed.pdf`), applies rewrite and incremental attacks, and shows basic/advanced checks. See the global installation in the root `README.md`; this file focuses only on how to run the subproject.
+This subproject demonstrates incremental attacks on a signed PDF and how to detect them. It generates PDFs in the `outputs/` folder, signs them, applies rewrite and incremental attacks, and shows basic/advanced checks.
+
+**Installation**: See the "Requirements and installation" section in the root `README.md`.
 
 ---
 
@@ -16,11 +18,11 @@ python src/pdf_signature_attack/simulate_pdf_signature_attack_pymupdf.py
 python src/pdf_signature_attack/simulate_pdf_signature_attack_pikepdf.py
 ```
 
-Generated files:
+Generated files (in `outputs/` folder):
 
 - `original.pdf`, `signed.pdf`
 - `attacked_rewrite.pdf` (destructive attack: invalidates the signature)
-- `attacked_incremental_pikepdf.pdf` or equivalent depending on the script
+- `attacked_incremental_pikepdf.pdf` or `attacked_incremental_pymupdf.pdf` depending on the script
 - `flattened.pdf` (consolidated; removes signatures)
 
 ---
@@ -37,4 +39,4 @@ Generated files:
 
 - Some PDF viewers may show different warnings for incremental updates.
 - Flattening prevents new incrementals but removes signatures.
-
+- All PDF files are generated in the `outputs/` folder for better organization.
