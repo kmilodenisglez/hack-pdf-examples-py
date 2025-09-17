@@ -531,7 +531,6 @@ def main():
     # Subcommands inherit global args from parent_parser
     subparsers.add_parser("generate", parents=[parent_parser], help="Generate unsigned and signed certificates")
     subparsers.add_parser("verify", parents=[parent_parser], help="Verify student edited files")
-    subparsers.add_parser("all", parents=[parent_parser], help="Generate, wait for manual edits, then verify")
 
     # Simulate attacks
     sim = subparsers.add_parser("simulate", parents=[parent_parser], help="Simulate attacks against signed PDFs")
@@ -570,22 +569,6 @@ def main():
 
     elif args.action == "verify":
         verify_student_modifications(outdir=outdir, generate_report=args.report, report_path=report_path)
-
-    elif args.action == "all":
-        # Generate certificates
-        generate_certificates(outdir=outdir)
-        print("📌 STUDENT INSTRUCTIONS:")
-        print("1. Open 'cert_fea.pdf' in Adobe/Word and change grade to '20/20'.")
-        print("2. Try editing 'cert_fec.pdf' (should invalidate signature).")
-        print("3. Edit 'cert_plain.pdf' freely.")
-        print("4. Save as *_EDITED.pdf")
-        input("\n➡️ Press ENTER when finished editing the files...")
-
-        # Verify edited files
-        results = verify_student_modifications(outdir=outdir, generate_report=args.report, report_path=report_path)
-        if args.report:
-            write_html_report(results, report_path)
-            log.info("📊 HTML report written to %s", report_path)
 
     elif args.action == "simulate":
         # Run attack simulation
