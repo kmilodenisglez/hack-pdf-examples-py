@@ -11,11 +11,15 @@ This subproject demonstrates incremental attacks on a signed PDF and how to dete
 From the repository root (with dependencies installed):
 
 ```bash
+cd src/pdf_signature_attack/
+```
+
+```bash
 # Simulation using PyMuPDF
-python src/pdf_signature_attack/simulate_pdf_signature_attack_pymupdf.py
+python simulate_pdf_signature_attack_pymupdf.py
 
 # Simulation using PikePDF
-python src/pdf_signature_attack/simulate_pdf_signature_attack_pikepdf.py
+python simulate_pdf_signature_attack_pikepdf.py
 ```
 
 Generated files (in `outputs/` folder):

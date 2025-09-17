@@ -48,9 +48,7 @@ htmlcov/
 *.egg
 /test.db
 /coverage.xml
-/src/pdf_signature_attack/attacked_*.pdf
-/src/pdf_signature_attack/flattened.pdf
-/src/pdf_signature_attack/signed.pdf
-/src/pdf_compare_certificates/*.pdf
 /src/pdf_compare_certificates/.~lock.*
 /src/pdf_compare_certificates/outputs/
+/src/pdf_signature_attack/outputs/
+.~lock.*
