@@ -1,198 +1,108 @@
-# Simulación de Ataques a Firmas PDF con PyMuPDF
+### README.md (Español)
 
-Este documento explica **en detalle** cómo funciona el script `simulate_pdf_signature_attack_pymupdf.py`, con el objetivo de:
+# Simulación de Ataques a Firmas PDF 🛡️
 
-1. Comprender la **firma digital de PDFs**.
-2. Simular ataques que alteran PDFs **sin y con preservación parcial de la firma**.
-3. Mostrar cómo detectar modificaciones y aplicar **flattening** para prevenir ataques.
+Este documento describe el script `simulate_pdf_signature_attack_pikepdf.py`, una herramienta educativa diseñada para talleres sobre la **seguridad de firmas digitales en documentos PDF**. El objetivo es demostrar, de forma práctica y visual, cómo se pueden manipular documentos firmados sin invalidar la firma a simple vista.
 
-El enfoque es **educativo y demostrativo**, ideal para presentaciones y conferencias.
+-----
 
-**Instalación**: Ver la sección "Requirements and installation" en el `README.md` raíz.
+## 1\. Conceptos Clave para el Taller 👨‍💻
 
----
+Para comprender este script, es crucial entender estos tres conceptos:
 
-## Diferencias con [PikePDF](./simulate_pdf_signature_attack_pikepdf.py)
+### 1.1. ¿Qué es una Firma Digital en un PDF?
 
-* **PyMuPDF**: Crea un nuevo PDF combinando páginas originales y maliciosas.
-* **PikePDF**: Realiza modificaciones incrementales más auténticas al PDF original.
-* **Detección**: Ambos métodos son detectables, pero PikePDF simula mejor ataques reales.
-* **Organización**: Ambos scripts ahora usan la misma estructura de carpetas `outputs/`.
+Una firma digital no es una simple imagen. Es un bloque de datos criptográficos que se añade al documento. Este bloque incluye:
 
----
+1.  **La firma en sí**: Un hash (resumen) del contenido del PDF original, encriptado con la **llave privada** del firmante.
+2.  **El Certificado**: La "tarjeta de identidad" del firmante, que contiene su llave pública y es validado por una autoridad.
+    Si se cambia un solo bit del contenido original, el hash no coincidirá, y la firma se mostrará como inválida.
 
-## 1. Propósito del Script
+### 1.2. El Ataque de Actualización Incremental (IRA) 🤯
 
-`simulate_pdf_signature_attack_pymupdf.py` simula un flujo completo de:
+A diferencia de otros formatos, el estándar PDF permite añadir nuevo contenido al final de un archivo, como si fueran "capas". Esto se llama **Actualización Incremental** o **Incremental Update** (IU).
+El ataque IRA explota esta característica:
 
-1. Creación de un **PDF original** (certificado académico ficticio).
-2. Firma digital usando **Endesive**.
-3. Ataques de dos tipos:
+1.  El atacante firma un documento "limpio".
+2.  Luego, **añade nuevo contenido malicioso** al final del archivo, en una nueva capa, sin modificar el bloque original ya firmado.
+3.  El lector de PDF lee el documento completo, incluyendo el nuevo contenido, pero la firma del bloque original sigue siendo criptográficamente válida. El resultado es que la firma parece correcta, pero el documento visible ha sido manipulado.
 
-    * **Incremental Rewrite Attack** → destruye la firma.
-    * **Incremental PyMuPDF Attack** → agrega una página preservando parcialmente la firma.
-4. Verificación básica y avanzada de la integridad del PDF.
-5. Flattening para prevenir modificaciones posteriores.
+### 1.3. Aplanamiento (Flattening) 🥞
 
-**Novedad**: Todos los archivos PDF se generan ahora en la carpeta `outputs/` para mantener el directorio de trabajo limpio y organizado.
+El aplanamiento es el proceso de consolidar todas las capas (la original, las anotaciones, las actualizaciones incrementales) en un solo documento final. Es como "hornear" todas las capas en una sola imagen. Cuando un PDF atacado se aplana, la firma **se destruye**, ya que el nuevo documento unificado tiene un hash completamente diferente al del documento original firmado.
 
----
+-----
 
-## 2. Flujo General
+## 2\. Flujo del Taller con el Script Refactorizado
 
-1. **Crear PDF original** → `outputs/original.pdf`
-2. **Firmar PDF** → `outputs/signed.pdf`
-3. **Ataques**:
+El script ahora usa comandos modulares, lo que te permite ejecutar el taller paso a paso, de forma más interactiva.
 
-    * `outputs/attacked_rewrite.pdf` → destruye firma.
-    * `outputs/attacked_incremental_pymupdf.pdf` → preserva parcialmente firma.
-4. **Verificación básica** → detecta firmas y muestra hashes.
-5. **Detección avanzada** → compara `startxref/%%EOF` y hashes para detectar modificaciones.
-6. **Flattening** → `outputs/flattened.pdf` para consolidar PDF y prevenir ataques incrementales.
+### 2.1. Requisitos e Instalación
 
----
+Asegúrate de tener las bibliotecas necesarias instaladas:
+`pip install endesive cryptography pypdf pikepdf reportlab fpdf2`
 
-## 3. Explicación Detallada de Funciones
+### 2.2. Paso 1: Creación del Documento ✅
 
-### 3.1 `create_original_pdf(path=None)`
+**Comando:** `python3 script.py create`
 
-* **Objetivo**: generar un PDF de prueba con información académica ficticia.
-* **Uso de FPDF**: se crean páginas y se agregan campos como nombre, curso, nota y fecha.
-* **Resultado**: `outputs/original.pdf` (por defecto).
-* **Notas**: si el PDF ya existe, no se vuelve a generar.
-* **Novedad**: Crea automáticamente la carpeta `outputs/` si no existe.
+* **Acción:** Crea el PDF base (`outputs/original.pdf`).
+* **Demostración:** Muestra este documento a los estudiantes. Es el "certificado académico" original que firmaremos.
 
----
+### 2.3. Paso 2: Firma del Documento 🖋️
 
-### 3.2 `sign_pdf(pdf_in=None, cert_pem_path="certs/cert.pem", key_pem_path="certs/key.pem", out=None)`
+**Comando:** `python3 script.py sign`
 
-* **Objetivo**: firmar digitalmente un PDF usando **Endesive**.
-* **Pasos principales**:
+* **Acción:** Firma `original.pdf` y crea `outputs/signed.pdf`.
+* **Demostración:** Pide a los estudiantes que abran `signed.pdf` en un lector de PDF (como Evince o Adobe Acrobat Reader) y validen visualmente que la firma es correcta y el documento no ha sido alterado.
 
-    1. Cargar certificado (`certs/cert.pem`) y clave privada (`certs/key.pem`).
-    2. Definir metadatos de firma (`reason`, `location`, `contact`, `signingdate`).
-    3. Firmar PDF con algoritmo SHA-256.
-    4. Guardar PDF firmado → `outputs/signed.pdf`.
-* **Consideraciones**:
+### 2.4. Paso 3: El Ataque (Incremental vs. Reescritura) 💥
 
-    * La firma asegura integridad y autenticidad del contenido original.
-    * Intentos alternativos (`udct` vs `dct`) manejan versiones de Endesive.
+**Comando:**
 
----
+* **Ataque de Reescritura:** `python3 script.py attack rewrite`
+* **Ataque Incremental:** `python3 script.py attack incremental`
+* **Acción:** El primer comando sobrescribe el archivo (`attacked_rewrite.pdf`), rompiendo la firma. El segundo comando (`attacked_incremental_pikepdf.pdf`) añade una nueva página con el texto "GRADE: 20/20" sin invalidar la firma.
+* **Demostración:** Muestra ambos documentos a los estudiantes. Compara `attacked_rewrite.pdf` (firma rota) con `attacked_incremental_pikepdf.pdf` (firma visualmente válida pero con contenido modificado). ¡Este es el momento clave\! Usa diferentes lectores de PDF para mostrar cómo algunos (Evince) pueden fallar en detectar el ataque, mientras que otros (Adobe Acrobat Reader) lo detectan y muestran una advertencia.
 
-### 3.3 `incremental_rewrite_attack(signed_pdf=None, out=None)`
+### 2.5. Paso 4: Verificación y Detección 🔎
 
-* **Objetivo**: simular un ataque que **agrega una página maliciosa** pero **rompe la firma**.
-* **Cómo funciona**:
+**Comando:**
 
-    1. Leer PDF firmado con `pypdf`.
-    2. Crear un PDF en memoria con `reportlab` que contiene la página maliciosa.
-    3. Agregar la página a un nuevo PDF y escribir archivo → `outputs/attacked_rewrite.pdf`.
-* **Resultado**: la firma original ya no es válida.
+* `python3 script.py verify outputs/signed.pdf`
+* `python3 script.py verify outputs/attacked_incremental_pikepdf.pdf`
+* **Acción:** El script analiza los archivos.
+* **Demostración:** Explica las diferencias en los resultados de la verificación:
+  * **`startxref` y `%%EOF`**: En el PDF atacado, estos marcadores se duplican, lo que indica que hay múltiples "capas" de contenido.
+  * **Hash SHA-256**: El hash del documento atacado será **diferente** al del documento original, confirmando que el contenido binario del archivo ha cambiado, a pesar de que la firma siga siendo válida.
 
----
+### 2.6. Paso 5: Mitigación (Aplanamiento) 🗜️
 
-### 3.4 `incremental_pymupdf_attack(signed_pdf=None, out=None)`
+**Comando:** `python3 script.py flatten`
 
-* **Objetivo**: simular un ataque **incremental** que agrega una página **sin sobrescribir páginas originales**.
-* **Cómo funciona**:
+* **Acción:** Convierte el PDF atacado en un nuevo archivo aplanado (`outputs/flattened_pypdf.pdf`).
+* **Demostración:** Pide a los estudiantes que abran el archivo aplanado. Verán que la firma digital **ha desaparecido por completo**, ya que el proceso de aplanamiento destruye la estructura que la contenía. Esto demuestra que la firma solo puede garantizar la integridad del documento en su estado original y que cualquier reescritura la invalida.
 
-    1. Crear página maliciosa en memoria (`reportlab`).
-    2. Guardar temporalmente como PDF.
-    3. Abrir PDF firmado con `PyMuPDF`.
-    4. Insertar todas las páginas originales + la página maliciosa al final.
-    5. Guardar resultado → `outputs/attacked_incremental_pymupdf.pdf`.
-* **Notas**: la firma de las páginas originales **permanece**, pero la integridad global del PDF queda comprometida.
+-----
 
----
-
-### 3.5 `basic_verification(pdf_path, original_signed=None)`
-
-* **Objetivo**: verificar presencia de firmas y mostrar información clave.
-* **Incluye**:
-
-    * Detectar firmas con `endesive.pdf.verify`.
-    * Mostrar hashes SHA-256.
-    * Contar `startxref` y `%%EOF` para detectar secciones incrementales.
-* **Si se pasa `original_signed`**: compara hash del PDF atacado vs original para alertar sobre cambios.
-
----
-
-### 3.6 `detect_incremental_update_advanced(signed=None, attacked=None)`
-
-* **Objetivo**: detectar modificaciones **incrementales y cambios de contenido** de forma más sofisticada.
-* **Qué hace**:
-
-    * Cuenta `startxref` y `%%EOF` en PDFs firmado y atacado.
-    * Calcula hashes SHA-256 de ambos PDFs.
-    * Señala si hay más secciones o contenido diferente → posible ataque.
-* **Novedad**: Usa rutas por defecto en la carpeta `outputs/`.
-
----
-
-### 3.7 `apply_flattening_pypdf(input_pdf=None, out=None)`
-
-* **Objetivo**: consolidar PDF en un solo flujo para **prevenir ataques incrementales**.
-* **Cómo funciona**:
-
-    * Lee todas las páginas del PDF original.
-    * Escribe un PDF nuevo linealizado.
-    * El PDF resultante ya no permite modificaciones incrementales posteriores.
-* **Resultado**: `outputs/flattened.pdf`.
-* **Nota**: elimina firmas digitales.
-
----
-
-## 4. Flujo Principal (`main()`)
-
-1. Crear PDF original → `outputs/original.pdf`.
-2. Firmar PDF → `outputs/signed.pdf`.
-3. Aplicar **ataque de reescritura** y **ataque incremental PyMuPDF**.
-4. Verificación básica de ambos PDFs atacados.
-5. Detección avanzada de incrementales.
-6. Flattening del PDF atacado → `outputs/flattened.pdf`.
-
----
-
-## 5. Estructura de Archivos
+## 3\. Estructura de Archivos del Taller
 
 ```
 pdf_signature_attack/
-├── outputs/                    # 📁 Carpeta de salida (se crea automáticamente)
-│   ├── original.pdf           # PDF original generado
-│   ├── signed.pdf            # PDF firmado digitalmente
-│   ├── attacked_rewrite.pdf  # PDF atacado (firma rota)
-│   ├── attacked_incremental_pymupdf.pdf  # PDF con ataque incremental
-│   └── flattened.pdf         # PDF aplanado (sin firmas)
-├── certs/                     # 📁 Certificados para firmar
-│   ├── cert.pem              # Certificado público
-│   └── key.pem               # Llave privada
-└── simulate_pdf_signature_attack_pymupdf.py
+├── outputs/                         # 📁 Todos los PDFs generados
+│ ├── original.pdf
+│ ├── signed.pdf
+│ ├── attacked_rewrite.pdf
+│ ├── attacked_incremental_pikepdf.pdf
+│ └── flattened_pypdf.pdf
+├── certs/                           # 📁 Certificados para la firma
+│ ├── cert.pem
+│ └── key.pem
+└── simulate_pdf_signature_attack_pikepdf.py # 🐍 Script principal
 ```
 
----
+-----
 
-## 6. Uso en Conferencias/Talleres
+## 4\. Conclusión
 
-* **Demostración paso a paso**: ejecutar cada función individualmente para ilustrar los efectos de la firma.
-* **Comparación visual**: comparar archivos en la carpeta `outputs/`: `signed.pdf`, `attacked_rewrite.pdf` y `attacked_incremental_pymupdf.pdf`.
-* **Detección y mitigación**: mostrar cómo los marcadores, hashes y flattening revelan y previenen manipulaciones.
-* **Organización**: la carpeta `outputs/` mantiene todos los resultados organizados y facilita la demostración.
-
----
-
-## 7. Mejoras en Esta Versión
-
-* **Organización de archivos**: Todos los PDFs se generan en la carpeta `outputs/`.
-* **Creación automática**: La carpeta `outputs/` se crea automáticamente si no existe.
-* **Rutas por defecto**: Las funciones usan rutas por defecto dentro de `outputs/`.
-* **Certificados organizados**: Los certificados se buscan en la carpeta `certs/`.
-* **Logging mejorado**: Mejor información sobre la creación de archivos y directorios.
-
----
-
-## 8. Conclusión
-
-* Este script es una **herramienta educativa sobre seguridad en PDFs**, mostrando diferencias entre **ataques destructivos vs incrementales**.
-* Demuestra métodos de **verificación, detección y mitigación**.
-* La nueva estructura con carpeta `outputs/` mejora la organización y facilita su uso en entornos académicos, administrativos o talleres para ilustrar **riesgos y defensas de firmas PDF**.
+Este taller proporciona una base sólida para entender la seguridad de los documentos PDF. Muestra que la firma digital es robusta, pero las **vulnerabilidades residen en el formato del archivo y en cómo los lectores lo interpretan**. Es una excelente introducción a la seguridad forense y a la importancia de la validación completa en el desarrollo de software.

@@ -1,180 +1,106 @@
-# PDF Signature Attack Simulation with PikePDF
+# PDF Signature Attack Simulation 🛡️
 
-This document explains in detail how the script `simulate_pdf_signature_attack_pikepdf.py` works, focusing on **PDF digital signatures, incremental attacks, and detection methods**. It is designed for educational and demonstration purposes.
+This document describes the script `simulate_pdf_signature_attack_pikepdf.py`, an educational tool designed for workshops on **digital signature security in PDF documents**. The goal is to demonstrate, in a practical and visual way, how signed documents can be tampered with without invalidating the signature at first glance.
 
-**Installation**: See the "Requirements and installation" section in the root `README.md`.
+-----
 
----
+## 1\. Key Concepts for the Workshop 👨‍💻
 
-## 1. Script Purpose
+To understand this script, it is crucial to grasp these three concepts:
 
-`simulate_pdf_signature_attack_pikepdf.py` simulates a complete workflow:
+### 1.1. What is a Digital Signature in a PDF?
 
-1. Create an **original PDF** (fictitious academic certificate).
-2. Digitally sign it with **Endesive**.
-3. Apply two types of attacks:
+A digital signature isn't just a simple image. It's a block of cryptographic data added to the document. This block includes:
 
-  * **Incremental Rewrite Attack** → overwrites PDF, breaking the signature.
-  * **Incremental PikePDF Attack** → adds a page as an incremental update, partially preserving the signature.
-4. Perform **basic verification** of signatures.
-5. Perform **advanced detection** to identify incremental modifications.
-6. Apply **flattening** to prevent further incremental attacks.
+1.  **The signature itself**: A hash (summary) of the original PDF content, encrypted with the signer's **private key**.
+2.  **The Certificate**: The signer's "identity card," which contains their public key and is validated by an authority.
+    If a single bit of the original content is changed, the hash won't match, and the signature will show as invalid.
 
-**New Feature**: All PDF files are now generated in the `outputs/` folder to keep the working directory clean and organized.
+### 1.2. The Incremental Update Attack (IUA) 🤯
 
----
+Unlike other formats, the PDF standard allows new content to be added to the end of a file, like "layers." This is called an **Incremental Update** (IU).
+The IUA exploits this feature:
 
-## 2. General Workflow
+1.  The attacker signs a "clean" document.
+2.  Then, they **append new malicious content** to the end of the file in a new layer, without modifying the original signed block.
+3.  The PDF reader reads the entire document, including the new content, but the signature for the original block remains cryptographically valid. The result is that the signature appears correct, but the visible document has been tampered with.
 
-1. **Create Original PDF** → `outputs/original.pdf`
-2. **Sign PDF** → `outputs/signed.pdf`
-3. **Apply Attacks**:
+### 1.3. Flattening 🥞
 
-  * `outputs/attacked_rewrite.pdf` → destroys the signature.
-  * `outputs/attacked_incremental_pikepdf.pdf` → partially preserves the signature while appending pages.
-4. **Basic Verification** → detects signatures, prints hashes and markers.
-5. **Advanced Detection** → compares `startxref/%%EOF` markers and SHA-256 hashes.
-6. **Flattening** → `outputs/flattened.pdf` to consolidate PDF, preventing incremental attacks.
+Flattening is the process of consolidating all layers (the original, annotations, incremental updates) into a single final document. It's like "baking" all the layers into one image. When an attacked PDF is flattened, the signature is **destroyed**, as the new unified document has a completely different hash than the original signed document.
 
----
+-----
 
-## 3. Function Details
+## 2\. Workshop Workflow with the Refactored Script
 
-### 3.1 `create_original_pdf(path=None)`
+The script now uses modular commands, allowing you to run the workshop step-by-step, in a more interactive way.
 
-* **Purpose**: Generate a sample academic certificate PDF.
-* **Implementation**: Uses `FPDF` to create a single page with fields like name, course, grade, and date.
-* **Output**: `outputs/original.pdf` (default)
-* **Note**: Skips creation if the file already exists.
-* **New Feature**: Automatically creates the `outputs/` folder if it doesn't exist.
+### 2.1. Requirements and Installation
 
----
+Make sure you have the necessary libraries installed:
+`pip install endesive cryptography pypdf pikepdf reportlab fpdf2`
 
-### 3.2 `sign_pdf(pdf_in=None, cert_pem_path="certs/cert.pem", key_pem_path="certs/key.pem", out=None)`
+### 2.2. Step 1: Document Creation ✅
 
-* **Purpose**: Digitally sign a PDF using **Endesive**.
-* **Implementation**:
+**Command:** `python3 script.py create`
 
-  1. Load PEM certificate and private key from the `certs/` folder.
-  2. Define signature metadata: `reason`, `location`, `contact`, `signingdate`.
-  3. Sign PDF using SHA-256.
-  4. Save → `outputs/signed.pdf`.
-* **Notes**: Ensures authenticity and integrity; handles variations in Endesive API (`udct` vs `dct`).
+* **Action:** Creates the base PDF (`outputs/original.pdf`).
+* **Demonstration:** Show this document to the students. This is the original "academic certificate" we will sign.
 
----
+### 2.3. Step 2: Document Signing 🖋️
 
-### 3.3 `incremental_rewrite_attack(signed_pdf=None, out=None)`
+**Command:** `python3 script.py sign`
 
-* **Purpose**: Simulate a destructive attack that adds a malicious page and **breaks the signature**.
-* **Implementation**:
+* **Action:** Signs `original.pdf` and creates `outputs/signed.pdf`.
+* **Demonstration:** Ask students to open `signed.pdf` in a PDF reader (like Evince or Adobe Acrobat Reader) and visually validate that the signature is correct and the document hasn't been altered.
 
-  * Read the signed PDF using `pypdf`.
-  * Generate malicious page in memory with `reportlab`.
-  * Append the page and save → `outputs/attacked_rewrite.pdf`.
-* **Result**: The original signature becomes invalid.
+### 2.4. Step 3: The Attack (Incremental vs. Rewrite) 💥
 
----
+**Command:**
 
-### 3.4 `incremental_pikepdf_attack(signed_pdf=None, out=None)`
+* **Rewrite Attack:** `python3 script.py attack rewrite`
+* **Incremental Attack:** `python3 script.py attack incremental`
+* **Action:** The first command overwrites the file (`attacked_rewrite.pdf`), breaking the signature. The second command (`attacked_incremental_pikepdf.pdf`) appends a new page with the text "GRADE: 20/20" without invalidating the signature.
+* **Demonstration:** Show both documents to the students. Compare `attacked_rewrite.pdf` (broken signature) with `attacked_incremental_pikepdf.pdf` (visually valid signature but with modified content). This is the key moment\! Use different PDF readers to show how some (Evince) might fail to detect the attack, while others (Adobe Acrobat Reader) detect it and display a warning.
 
-* **Purpose**: Simulate a **real incremental attack** that adds a page while partially preserving the original signature.
-* **Implementation**:
+### 2.5. Step 4: Verification and Detection 🔎
 
-  1. Create a malicious page in memory using `reportlab`.
-  2. Save temporary PDF.
-  3. Open original signed PDF with `pikepdf` and append the malicious page.
-  4. Save → `outputs/attacked_incremental_pikepdf.pdf`.
-* **Notes**: Signature in the original pages remains detectable, but the content of the new page is untrusted. Some PDF readers will flag incremental modifications.
+**Command:**
 
----
+* `python3 script.py verify outputs/signed.pdf`
+* `python3 script.py verify outputs/attacked_incremental_pikepdf.pdf`
+* **Action:** The script analyzes the files.
+* **Demonstration:** Explain the differences in the verification results:
+  * **`startxref` and `%%EOF`**: In the attacked PDF, these markers are duplicated, indicating that there are multiple "layers" of content.
+  * **SHA-256 Hash**: The hash of the attacked document will be **different** from the original document, confirming that the binary content of the file has changed, even though the signature remains valid.
 
-### 3.5 `basic_verification(pdf_path, original_signed=None)`
+### 2.6. Step 5: Mitigation (Flattening) 🗜️
 
-* **Purpose**: Detect signatures and provide a basic integrity overview.
-* **Includes**:
+**Command:** `python3 script.py flatten`
 
-  * Verifies signatures using `endesive.pdf.verify`.
-  * Prints SHA-256 hash of the PDF.
-  * Counts `startxref` and `%%EOF` markers to detect incremental updates.
-* **Comparison**: If `original_signed` is provided, compares hashes to detect changes.
+* **Action:** Converts the attacked PDF into a new flattened file (`outputs/flattened_pypdf.pdf`).
+* **Demonstration:** Ask students to open the flattened file. They will see that the digital signature **has completely disappeared**, as the flattening process destroys the structure that contained it. This shows that the signature can only guarantee the integrity of the document in its original state and that any rewrite invalidates it.
 
----
+-----
 
-### 3.6 `detect_incremental_update_advanced(signed=None, attacked=None)`
-
-* **Purpose**: Detect **incremental updates and content changes**.
-* **Implementation**:
-
-  * Count `startxref` and `%%EOF` in both signed and attacked PDFs.
-  * Compute SHA-256 hashes.
-  * Alerts if additional sections exist or content differs → likely tampering.
-* **Outcome**: Clearly identifies whether the incremental attack modified the PDF after signing.
-* **New Feature**: Uses default paths within the `outputs/` folder.
-
----
-
-### 3.7 `apply_flattening_pypdf(input_pdf=None, out=None)`
-
-* **Purpose**: Consolidate PDF pages into a **single linearized file**, preventing incremental attacks.
-* **Implementation**:
-
-  * Read all pages using `pypdf`.
-  * Write a new PDF sequentially.
-  * Save → `outputs/flattened.pdf`.
-* **Note**: Flattening removes all digital signatures.
-
----
-
-## 4. Main Flow (`main()`)
-
-1. Generate original PDF → `outputs/original.pdf`.
-2. Sign PDF → `outputs/signed.pdf`.
-3. Apply **rewrite attack** and **PikePDF incremental attack**.
-4. Run basic verification on both attacked PDFs.
-5. Run advanced incremental detection for the PikePDF attack.
-6. Flatten the attacked PDF → `outputs/flattened.pdf`.
-
----
-
-## 5. File Structure
+## 3\. Workshop File Structure
 
 ```
 pdf_signature_attack/
-├── outputs/ # 📁 Output folder (auto-created)
-│ ├── original.pdf # Generated original PDF
-│ ├── signed.pdf # Digitally signed PDF
-│ ├── attacked_rewrite.pdf # Attacked PDF (broken signature)
-│ ├── attacked_incremental_pikepdf.pdf # PDF with incremental attack
-│ └── flattened.pdf # Flattened PDF (no signatures)
-├── certs/ # 📁 Signing certificates
-│ ├── cert.pem # Public certificate
-│ └── key.pem # Private key
-└── simulate_pdf_signature_attack_pikepdf.py
+├── outputs/                         # 📁 All generated PDFs
+│ ├── original.pdf
+│ ├── signed.pdf
+│ ├── attacked_rewrite.pdf
+│ ├── attacked_incremental_pikepdf.pdf
+│ └── flattened_pypdf.pdf
+├── certs/                           # 📁 Certificates for signing
+│ ├── cert.pem
+│ └── key.pem
+└── simulate_pdf_signature_attack_pikepdf.py # 🐍 Main script
 ```
 
----
+-----
 
-## 6. Conference/Workshop Use
+## 4\. Conclusion
 
-* **Step-by-step demonstration**: run each function individually to illustrate signature effects.
-* **Visual comparison**: compare files in the `outputs/` folder: `signed.pdf`, `attacked_rewrite.pdf`, and `attacked_incremental_pikepdf.pdf`.
-* **Detection and mitigation**: show how markers, hashes, and flattening reveal and prevent tampering.
-* **Organization**: the `outputs/` folder keeps all results organized and facilitates demonstration.
-
----
-
-## 8. Improvements in This Version
-
-* **File organization**: All PDFs are generated in the `outputs/` folder.
-* **Automatic creation**: The `outputs/` folder is created automatically if it doesn't exist.
-* **Default paths**: Functions use default paths within `outputs/`.
-* **Organized certificates**: Certificates are searched in the `certs/` folder.
-* **Enhanced logging**: Better information about file and directory creation.
-
----
-
-## 9. Conclusion
-
-* This script is a **teaching tool for PDF security**, showing differences between **destructive vs incremental attacks**.
-* Demonstrates methods for **verification, detection, and mitigation**.
-* The new structure with the `outputs/` folder improves organization and facilitates its use in academic, administrative, or workshop settings to illustrate **PDF signature risks and defenses**.
+This workshop provides a solid foundation for understanding PDF document security. It shows that the digital signature itself is robust, but the **vulnerabilities lie in the file format and how readers interpret it**. It's an excellent introduction to digital forensics and the importance of thorough validation in software development.
