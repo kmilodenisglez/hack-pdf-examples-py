@@ -21,8 +21,7 @@ import hashlib
 import logging
 import argparse
 import importlib.util
-import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from pprint import pprint
 import tempfile
 
@@ -51,17 +50,21 @@ def check_python_packages(packages):
             missing.append(pkg)
     return missing
 
-def preflight_check(require_attack=False, require_crypto=False):
+
+def preflight_check(require_attack=False, require_crypto=False, check_workshop_certs=True):
     """
     Checks for certificates and dependencies.
+    If check_workshop_certs=True, it validates the FEA/FEC certificate files.
     If require_attack=True, also validates packages for attack simulation.
     If require_crypto=True, validates packages for crypto functions.
     """
     missing = []
-    # Check cert files
-    for p in [CERT_FEA, KEY_FEA, CERT_FEC, KEY_FEC]:
-        if not os.path.exists(p):
-            missing.append(f"missing file: {p}")
+
+    if check_workshop_certs:
+        # Check cert files
+        for p in [CERT_FEA, KEY_FEA, CERT_FEC, KEY_FEC]:
+            if not os.path.exists(p):
+                missing.append(f"missing file: {p}")
 
     # Check Python packages
     pkgs = ["endesive", "fpdf", "pikepdf", "cryptography"]
@@ -75,6 +78,7 @@ def preflight_check(require_attack=False, require_crypto=False):
 
     return missing
 
+
 # -----------------------
 # Utilities
 # -----------------------
@@ -84,11 +88,14 @@ def ensure_outdir(outdir):
     os.makedirs(outdir, exist_ok=True)
     return outdir
 
+
 def path_in(outdir, filename):
     return os.path.join(outdir, filename)
 
+
 def now_ts():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 
 # -----------------------
 # Test Certificate Generation
@@ -177,6 +184,7 @@ def create_sample_pdf(name="John Doe", course="Course", grade="14/20", path="tem
     log.info("📄 PDF generated: %s", path)
     return path
 
+
 def sign_pdf(pdf_in, cert_pem, key_pem, output, is_qualified=False):
     """
     Sign a PDF using Endesive and save a compatible signed PDF.
@@ -218,6 +226,7 @@ def sign_pdf(pdf_in, cert_pem, key_pem, output, is_qualified=False):
     log.info("🔒 PDF signed and saved: %s", output)
     return output
 
+
 # -----------------------
 # Certificate Validation
 # -----------------------
@@ -242,13 +251,14 @@ def validate_certificate_info(cert_path):
 
     try:
         cert = x509.load_pem_x509_certificate(cert_bytes, default_backend())
+
         info = {
             "Subject": cert.subject.rfc4514_string(),
             "Issuer": cert.issuer.rfc4514_string(),
             "Serial Number": cert.serial_number,
             "Validity": {
-                "Not Before": cert.not_valid_before.strftime("%Y-%m-%d %H:%M:%S"),
-                "Not After": cert.not_valid_after.strftime("%Y-%m-%d %H:%M:%S"),
+                "Not Before": cert.not_valid_before_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                "Not After": cert.not_valid_after_utc.strftime("%Y-%m-%d %H:%M:%S"),
             },
             "Signature Algorithm": cert.signature_hash_algorithm.name,
             "Public Key Size": cert.public_key().key_size,
@@ -257,11 +267,10 @@ def validate_certificate_info(cert_path):
         log.info("📊 Certificate information for %s:", cert_path)
         pprint(info)
 
-        # Expiration check
-        now = datetime.utcnow()
-        if now > cert.not_valid_after:
+        now = datetime.now(UTC)
+        if now > cert.not_valid_after_utc:
             log.warning("⚠️ The certificate has expired.")
-        elif now < cert.not_valid_before:
+        elif now < cert.not_valid_before_utc:
             log.warning("⚠️ The certificate is not yet valid.")
         else:
             log.info("✅ The certificate is currently valid.")
@@ -280,6 +289,7 @@ def compute_hash(pdf_path):
             h.update(chunk)
     return h.hexdigest()
 
+
 def extract_text(pdf_path):
     text_content = []
     try:
@@ -290,6 +300,7 @@ def extract_text(pdf_path):
         log.debug("pikepdf failed to open %s: %s", pdf_path, e)
         return []
     return text_content
+
 
 def verify_certificate(original_path, modified_path, label=""):
     """
@@ -347,49 +358,55 @@ def verify_certificate(original_path, modified_path, label=""):
         result["error"] = str(e)
     return result
 
+
 def print_verification_result(res):
     """Prints human-friendly verification result to console."""
     label = res.get("label")
     print(f"\n🔍 VERIFYING: {label}")
-    print("="*60)
+    print("=" * 60)
     if res.get("error"):
         print("   ❌ ERROR:", res["error"])
-        print("="*60)
+        print("=" * 60)
         return
     print(f"   Original Hash: {res.get('orig_hash')}")
     print(f"   Modified Hash: {res.get('mod_hash')}")
     print("   ✅ Content intact (Hash match)" if res.get("hash_match") else "   ❌ Content modified! (Hash mismatch)")
     if res.get("signatures"):
         for idx, s in enumerate(res["signatures"], start=1):
-            print(f"   Signature #{idx}: {'VALID' if s['ok'] else 'INVALID'} | Signer: {s['signer']} | time: {s.get('signing_time')}")
+            print(
+                f"   Signature #{idx}: {'VALID' if s['ok'] else 'INVALID'} | Signer: {s['signer']} | time: {s.get('signing_time')}")
     else:
         print("   ⚠️  No digital signature detected.")
     print(f"   startxref/incremental: {res.get('incremental')}")
     print("\n   Text snippets (first 120 characters per page):")
     for i, sn in enumerate(res.get("text_snippets", []), start=1):
         print(f"      Page {i}: {sn}")
-    print("="*60)
+    print("=" * 60)
+
 
 def write_html_report(results, outpath):
     """
     Writes a simple HTML report summarizing verification results.
     """
+
     def color_for(res):
         if res.get("error"): return "#ffcccc"
         if not res.get("signatures"): return "#fff2cc"
         all_ok = all(s.get("ok") for s in res.get("signatures", []))
         if all_ok and res.get("hash_match", True) and not res.get("incremental", False): return "#ccffcc"
         return "#ffd9d9"
+
     rows = []
     for r in results:
         color = color_for(r)
-        signer_info = "<br>".join([f"{s['signer']} ({'OK' if s['ok'] else 'INVALID'})" for s in r.get("signatures", [])]) or "None"
-        snippets = "<br>".join([f"Page {i+1}: {s}" for i, s in enumerate(r.get("text_snippets", []))]) or "None"
+        signer_info = "<br>".join(
+            [f"{s['signer']} ({'OK' if s['ok'] else 'INVALID'})" for s in r.get("signatures", [])]) or "None"
+        snippets = "<br>".join([f"Page {i + 1}: {s}" for i, s in enumerate(r.get("text_snippets", []))]) or "None"
         rows.append(f"""
         <tr style="background:{color}">
             <td>{r.get('label')}</td>
-            <td>{os.path.basename(r.get('original',''))}</td>
-            <td>{os.path.basename(r.get('modified',''))}</td>
+            <td>{os.path.basename(r.get('original', ''))}</td>
+            <td>{os.path.basename(r.get('modified', ''))}</td>
             <td>{r.get('orig_hash') or 'N/A'}</td>
             <td>{r.get('mod_hash') or 'N/A'}</td>
             <td>{'Yes' if r.get('hash_match') else 'No'}</td>
@@ -417,6 +434,7 @@ def write_html_report(results, outpath):
     with open(outpath, "w", encoding="utf-8") as f:
         f.write(html)
 
+
 def inspect_pdf_structure(pdf_path):
     """
     Prints the object tree and internal structure of a PDF for demonstration purposes.
@@ -437,7 +455,7 @@ def inspect_pdf_structure(pdf_path):
 
             print("\n--- Page Structure ---")
             for i, page in enumerate(pdf.pages):
-                print(f"  Page {i+1} (object {page.obj_num})")
+                print(f"  Page {i + 1} (object {page.obj_num})")
                 try:
                     if '/Annots' in page:
                         log.info("    Annotations detected: %s", page['/Annots'])
@@ -497,6 +515,7 @@ def generate_sample_documents(outdir="./outputs"):
 
     log.info("✅ Certificates generated at %s", os.path.abspath(outdir))
     return {"plain": plain, "fea": cert_fea_out, "fec": cert_fec_out}
+
 
 def verify_student_modifications(outdir=".", generate_report=False, report_path=None):
     """
@@ -567,6 +586,7 @@ def incremental_rewrite_attack(signed_pdf, out):
     log.warning("🔴 Rewrite attack produced: %s", out)
     return out
 
+
 def incremental_pikepdf_attack(signed_pdf, out):
     """
     Append a page as an incremental update using pikepdf (may preserve original bytes).
@@ -606,6 +626,7 @@ def incremental_pikepdf_attack(signed_pdf, out):
             except Exception:
                 pass
 
+
 def simulate_attacks(mode, outdir=".", report=False, report_path=None):
     """
     Generate certificates, run attack mode on FEA and FEC, verify and optionally report.
@@ -633,6 +654,7 @@ def simulate_attacks(mode, outdir=".", report=False, report_path=None):
 
     return results
 
+
 # -----------------------
 # HTML Report writer
 # -----------------------
@@ -640,6 +662,7 @@ def write_html_report(results, outpath):
     """
     Write a simple HTML report summarizing verification results.
     """
+
     def color_for(res):
         if res.get("error"):
             return "#ffcccc"  # light red
@@ -653,13 +676,14 @@ def write_html_report(results, outpath):
     rows = []
     for r in results:
         color = color_for(r)
-        signer_info = "<br>".join([f"{s['signer']} ({'OK' if s['ok'] else 'INVALID'})" for s in r.get("signatures", [])]) or "None"
-        snippets = "<br>".join([f"Page {i+1}: {s}" for i, s in enumerate(r.get("text_snippets", []))]) or "None"
+        signer_info = "<br>".join(
+            [f"{s['signer']} ({'OK' if s['ok'] else 'INVALID'})" for s in r.get("signatures", [])]) or "None"
+        snippets = "<br>".join([f"Page {i + 1}: {s}" for i, s in enumerate(r.get("text_snippets", []))]) or "None"
         rows.append(f"""
         <tr style="background:{color}">
             <td>{r.get('label')}</td>
-            <td>{os.path.basename(r.get('original',''))}</td>
-            <td>{os.path.basename(r.get('modified',''))}</td>
+            <td>{os.path.basename(r.get('original', ''))}</td>
+            <td>{os.path.basename(r.get('modified', ''))}</td>
             <td>{r.get('orig_hash') or 'N/A'}</td>
             <td>{r.get('mod_hash') or 'N/A'}</td>
             <td>{'Yes' if r.get('hash_match') else 'No'}</td>
@@ -731,8 +755,10 @@ def main():
     )
 
     # New subcommands that do not use global arguments
-    parser_gencert = subparsers.add_parser("gencert", help="Generate a new key pair and a self-signed test certificate.")
-    parser_gencert.add_argument("--name", default="Security Workshop", help="Common name for the certificate (e.g., 'University XYZ').")
+    parser_gencert = subparsers.add_parser("gencert",
+                                           help="Generate a new key pair and a self-signed test certificate.")
+    parser_gencert.add_argument("--name", default="Security Workshop",
+                                help="Common name for the certificate (e.g., 'University XYZ').")
 
     parser_inspect = subparsers.add_parser("inspect", help="Inspect the internal structure of a PDF.")
     parser_inspect.add_argument("file", help="Path to the PDF file to inspect.")
@@ -745,7 +771,16 @@ def main():
     # Preflight check based on the action
     require_attack = (args.action == "simulate")
     require_crypto = (args.action in ["gencert", "validate_certs"])
-    missing = preflight_check(require_attack=require_attack, require_crypto=require_crypto)
+
+    # New logic: Only check for the workshop certificates if they are actually needed.
+    check_workshop_certs = (args.action in ["generate", "verify", "simulate"])
+
+    missing = preflight_check(
+        require_attack=require_attack,
+        require_crypto=require_crypto,
+        check_workshop_certs=check_workshop_certs
+    )
+
     if missing:
         print("Preflight check failed. Missing items:")
         for m in missing:
@@ -776,6 +811,7 @@ def main():
         validate_certificate_info(args.file)
     else:
         parser.print_help()
+
 
 if __name__ == "__main__":
     main()
