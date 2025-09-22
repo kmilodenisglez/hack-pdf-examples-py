@@ -100,10 +100,10 @@ def now_ts():
 # -----------------------
 # Test Certificate Generation
 # -----------------------
-def generate_test_certs(common_name, outdir="certs"):
+def generate_test_certs():
     """
-    Generates a new private key and a self-signed test certificate
-    using the cryptography library.
+    Generates the key pairs and certificates required for the workshop.
+    It creates cert_fea.pem/key_fea.pem and cert_fec.pem/key_fec.pem.
     """
     try:
         from cryptography.hazmat.primitives import hashes
@@ -116,53 +116,61 @@ def generate_test_certs(common_name, outdir="certs"):
         log.error("The certificate generation function requires the 'cryptography' library.")
         sys.exit(1)
 
-    outdir = ensure_outdir(outdir)
-    key_path = os.path.join(outdir, "key.pem")
-    cert_path = os.path.join(outdir, "cert.pem")
+    # Ensure that the 'certs' directory exists
+    certs_dir = "certs"
+    os.makedirs(certs_dir, exist_ok=True)
 
-    log.info("Generating a new private key...")
-    key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=2048,
-        backend=default_backend()
-    )
+    def _create_cert(cert_path, key_path, common_name):
+        log.info(f"Generating new private key for '{common_name}'...")
+        key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+            backend=default_backend()
+        )
 
-    log.info("Generating a new self-signed certificate...")
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, u"EC"),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u"Guayas"),
-        x509.NameAttribute(NameOID.LOCALITY_NAME, u"Guayaquil"),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"Software Security Workshop"),
-        x509.NameAttribute(NameOID.COMMON_NAME, common_name),
-    ])
-    cert = x509.CertificateBuilder().subject_name(
-        subject
-    ).issuer_name(
-        issuer
-    ).public_key(
-        key.public_key()
-    ).serial_number(
-        x509.random_serial_number()
-    ).not_valid_before(
-        datetime.utcnow()
-    ).not_valid_after(
-        datetime.utcnow().replace(year=datetime.utcnow().year + 1)
-    ).add_extension(
-        x509.SubjectAlternativeName([x509.DNSName(u"localhost")]),
-        critical=False,
-    ).sign(key, hashes.SHA256(), default_backend())
+        log.info(f"Generating new self-signed certificate for '{common_name}'...")
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COUNTRY_NAME, u"EC"),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u"Guayas"),
+            x509.NameAttribute(NameOID.LOCALITY_NAME, u"Guayaquil"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"Software Security Workshop"),
+            x509.NameAttribute(NameOID.COMMON_NAME, common_name),
+        ])
+        cert = x509.CertificateBuilder().subject_name(
+            subject
+        ).issuer_name(
+            issuer
+        ).public_key(
+            key.public_key()
+        ).serial_number(
+            x509.random_serial_number()
+        ).not_valid_before(
+            datetime.now(UTC)
+        ).not_valid_after(
+            datetime.now(UTC).replace(year=datetime.now(UTC).year + 1)
+        ).add_extension(
+            x509.SubjectAlternativeName([x509.DNSName(u"localhost")]),
+            critical=False,
+        ).sign(key, hashes.SHA256(), default_backend())
 
-    log.info("Saving key and certificate...")
-    with open(key_path, "wb") as f:
-        f.write(key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
-        ))
-    with open(cert_path, "wb") as f:
-        f.write(cert.public_bytes(serialization.Encoding.PEM))
+        log.info(f"Saving key and certificate to {key_path} and {cert_path}")
+        with open(key_path, "wb") as f:
+            f.write(key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            ))
+        with open(cert_path, "wb") as f:
+            f.write(cert.public_bytes(serialization.Encoding.PEM))
 
-    log.info("✅ Certificates generated at %s and %s", key_path, cert_path)
+        log.info(f"✅ Certificates for '{common_name}' generated successfully.")
+
+    # Generate the certificate pair for FEA (advanced) signing
+    _create_cert(CERT_FEA, KEY_FEA, "FEA Certificate Authority")
+
+    # Generate the certificate pair for FEC/QES (qualified) signing
+    _create_cert(CERT_FEC, KEY_FEC, "FEC Certificate Authority")
+
 
 # -----------------------
 # PDF generation / signing
@@ -754,11 +762,7 @@ def main():
         help="Attack mode to simulate."
     )
 
-    # New subcommands that do not use global arguments
-    parser_gencert = subparsers.add_parser("gencert",
-                                           help="Generate a new key pair and a self-signed test certificate.")
-    parser_gencert.add_argument("--name", default="Security Workshop",
-                                help="Common name for the certificate (e.g., 'University XYZ').")
+    subparsers.add_parser("gen_certs", help="Generate all workshop key pairs and certificates.")
 
     parser_inspect = subparsers.add_parser("inspect", help="Inspect the internal structure of a PDF.")
     parser_inspect.add_argument("file", help="Path to the PDF file to inspect.")
@@ -770,9 +774,8 @@ def main():
 
     # Preflight check based on the action
     require_attack = (args.action == "simulate")
-    require_crypto = (args.action in ["gencert", "validate_certs"])
+    require_crypto = (args.action in ["gen_certs", "validate_certs"])
 
-    # New logic: Only check for the workshop certificates if they are actually needed.
     check_workshop_certs = (args.action in ["generate", "verify", "simulate"])
 
     missing = preflight_check(
@@ -803,15 +806,14 @@ def main():
                 report=args.report,
                 report_path=report_path
             )
-    elif args.action == "gencert":
-        generate_test_certs(common_name=args.name)
+    elif args.action == "gen_certs":
+        generate_test_certs()
     elif args.action == "inspect":
         inspect_pdf_structure(args.file)
     elif args.action == "validate_certs":
         validate_certificate_info(args.file)
     else:
         parser.print_help()
-
 
 if __name__ == "__main__":
     main()
