@@ -664,64 +664,6 @@ def simulate_attacks(mode, outdir=".", report=False, report_path=None):
 
 
 # -----------------------
-# HTML Report writer
-# -----------------------
-def write_html_report(results, outpath):
-    """
-    Write a simple HTML report summarizing verification results.
-    """
-
-    def color_for(res):
-        if res.get("error"):
-            return "#ffcccc"  # light red
-        if not res.get("signatures"):
-            return "#fff2cc"  # light yellow
-        all_ok = all(s.get("ok") for s in res.get("signatures", []))
-        if all_ok and res.get("hash_match", True) and not res.get("incremental", False):
-            return "#ccffcc"  # light green
-        return "#ffd9d9"  # pale red for issues
-
-    rows = []
-    for r in results:
-        color = color_for(r)
-        signer_info = "<br>".join(
-            [f"{s['signer']} ({'OK' if s['ok'] else 'INVALID'})" for s in r.get("signatures", [])]) or "None"
-        snippets = "<br>".join([f"Page {i + 1}: {s}" for i, s in enumerate(r.get("text_snippets", []))]) or "None"
-        rows.append(f"""
-        <tr style="background:{color}">
-            <td>{r.get('label')}</td>
-            <td>{os.path.basename(r.get('original', ''))}</td>
-            <td>{os.path.basename(r.get('modified', ''))}</td>
-            <td>{r.get('orig_hash') or 'N/A'}</td>
-            <td>{r.get('mod_hash') or 'N/A'}</td>
-            <td>{'Yes' if r.get('hash_match') else 'No'}</td>
-            <td>{signer_info}</td>
-            <td>{'Yes' if r.get('incremental') else 'No'}</td>
-            <td>{r.get('error') or ''}</td>
-            <td style="max-width:300px; white-space:normal;">{snippets}</td>
-        </tr>
-        """)
-
-    html = f"""
-    <html><head><meta charset="utf-8"><title>Verification Report</title></head>
-    <body>
-      <h2>Verification Report - {now_ts()}</h2>
-      <table border="1" cellpadding="6" cellspacing="0">
-        <thead>
-          <tr><th>Label</th><th>Original</th><th>Modified</th><th>Orig Hash</th><th>Mod Hash</th>
-          <th>Hash Match</th><th>Signatures</th><th>Incremental</th><th>Error</th><th>Text Snippets</th></tr>
-        </thead>
-        <tbody>
-          {''.join(rows)}
-        </tbody>
-      </table>
-    </body></html>
-    """
-    with open(outpath, "w", encoding="utf-8") as f:
-        f.write(html)
-
-
-# -----------------------
 # CLI Main
 # -----------------------
 def main():
