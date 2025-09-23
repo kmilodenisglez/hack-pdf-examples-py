@@ -16,6 +16,7 @@ CERT_* environment variables):
 """
 
 import os
+import random
 import sys
 import hashlib
 import logging
@@ -136,6 +137,9 @@ def generate_test_certs():
             x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"Software Security Workshop"),
             x509.NameAttribute(NameOID.COMMON_NAME, common_name),
         ])
+
+        serial_number = random.randrange(1, 2**159)
+        
         cert = x509.CertificateBuilder().subject_name(
             subject
         ).issuer_name(
@@ -143,7 +147,7 @@ def generate_test_certs():
         ).public_key(
             key.public_key()
         ).serial_number(
-            x509.random_serial_number()
+            serial_number
         ).not_valid_before(
             datetime.now(UTC)
         ).not_valid_after(
@@ -678,7 +682,7 @@ def main():
     parent_parser = argparse.ArgumentParser(add_help=False)
     parent_parser.add_argument(
         "--outdir",
-        default=".",
+        default="./outputs",
         help="Output directory for generated/verified files"
     )
     parent_parser.add_argument(
