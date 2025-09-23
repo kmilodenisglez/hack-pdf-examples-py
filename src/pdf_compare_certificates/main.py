@@ -23,7 +23,7 @@ import logging
 import argparse
 import importlib.util
 from datetime import datetime, timezone, UTC
-from pprint import pprint
+from pprint import pprint, pformat
 import tempfile
 
 # Optional imports used inside functions (we check preflight)
@@ -138,8 +138,8 @@ def generate_test_certs():
             x509.NameAttribute(NameOID.COMMON_NAME, common_name),
         ])
 
-        serial_number = random.randrange(1, 2**159)
-        
+        serial_number = random.randrange(1, 2 ** 159)
+
         cert = x509.CertificateBuilder().subject_name(
             subject
         ).issuer_name(
@@ -291,6 +291,22 @@ def validate_certificate_info(cert_path):
         log.error("Error processing the certificate: %s", e)
 
 
+def human_readable_size(n):
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if n < 1024.0:
+            return f"{n:3.1f}{unit}"
+        n /= 1024.0
+    return f"{n:.1f}PB"
+
+
+def file_mtime(path):
+    try:
+        ts = os.path.getmtime(path)
+        return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return "N/A"
+
+
 # -----------------------
 # Verification and Reports
 # -----------------------
@@ -316,9 +332,12 @@ def extract_text(pdf_path):
 
 def verify_certificate(original_path, modified_path, label=""):
     """
-    Verifies a file and returns a result dict for reporting.
+    Verifies a file and returns an enriched result dict for reporting and traceability.
     """
     from endesive.pdf.verify import verify
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.backends import default_backend
 
     result = {
         "label": label,
@@ -332,75 +351,217 @@ def verify_certificate(original_path, modified_path, label=""):
         "incremental": False,
         "text_snippets": [],
         "error": None,
+        # Additional metadata for traceability:
+        "modified_size": None,
+        "modified_mtime": None,
+        "modified_pages": None,
+        "startxref_count": None,
+        "eof_count": None,
+        "annotations": None,
+        "form_fields": None,
+        "embedded_certificates": [],  # list of dicts with cert details when available
     }
+
     if not os.path.exists(modified_path):
         result["error"] = "modified file not found"
         return result
+
     try:
+        # Basic file metadata
+        result["modified_size"] = human_readable_size(os.path.getsize(modified_path))
+        result["modified_mtime"] = file_mtime(modified_path)
+
+        # Hashes
         if os.path.exists(original_path):
             result["orig_hash"] = compute_hash(original_path)
         result["mod_hash"] = compute_hash(modified_path)
         result["hash_match"] = (result["orig_hash"] == result["mod_hash"])
+
+        # Try to verify signatures using Endesive
         try:
             with open(modified_path, 'rb') as f:
                 data = f.read()
             sigs = verify(data)
+            # sigs is typically a list of dicts returned by endesive
             if sigs:
                 for r in sigs:
-                    result["signatures"].append({
-                        "signer": r.get("signer_name", "Unknown"),
+                    siginfo = {
+                        "signer": r.get("signer_name") or r.get("signer", "Unknown"),
                         "ok": bool(r.get("ok")),
-                        "signing_time": r.get("signing_time")
-                    })
+                        "signing_time": r.get("signing_time"),
+                        "raw": {k: v for k, v in r.items() if k not in ('cert',)},
+                    }
+                    # Attempt to parse embedded certificate if present
+                    possible_cert = None
+                    # Endesive may provide certificate bytes under different keys; try common ones
+                    for key in ("cert", "certificate", "certbytes"):
+                        if key in r and r[key]:
+                            possible_cert = r[key]
+                            break
+                    if possible_cert:
+                        try:
+                            cert = x509.load_pem_x509_certificate(possible_cert, default_backend())
+                        except Exception:
+                            try:
+                                cert = x509.load_der_x509_certificate(possible_cert, default_backend())
+                            except Exception:
+                                cert = None
+                        if cert is not None:
+                            cert_info = {
+                                "subject": cert.subject.rfc4514_string(),
+                                "issuer": cert.issuer.rfc4514_string(),
+                                "serial_number": cert.serial_number,
+                                "not_before": cert.not_valid_before.strftime("%Y-%m-%d %H:%M:%S"),
+                                "not_after": cert.not_valid_after.strftime("%Y-%m-%d %H:%M:%S"),
+                                "fingerprint_sha256": cert.fingerprint(hashes.SHA256()).hex(),
+                                "public_key_size": getattr(getattr(cert, "public_key", lambda: None)(), "key_size", "N/A")
+                            }
+                            siginfo["cert_info"] = cert_info
+                            result["embedded_certificates"].append(cert_info)
+                    result["signatures"].append(siginfo)
             else:
                 result["signatures"] = []
         except AssertionError:
+            # Endesive used an assert internally to indicate incremental updates
             result["error"] = "verification incomplete (incremental updates present)"
         except Exception as e:
             result["error"] = f"signature verification error: {e}"
+
+        # Inspect PDF structure for startxref/%%EOF and pages/fields
+        try:
+            import pikepdf
+            with pikepdf.open(modified_path) as pdf:
+                result["modified_pages"] = len(pdf.pages)
+                # Annotations & AcroForm / fields
+                annots = []
+                form_fields = []
+                for i, page in enumerate(pdf.pages):
+                    try:
+                        if "/Annots" in page:
+                            annots.append(f"Page {i+1}: {len(page['/Annots'])} annots")
+                    except Exception:
+                        pass
+                result["annotations"] = annots or None
+                try:
+                    if '/AcroForm' in pdf.root and '/Fields' in pdf.root['/AcroForm']:
+                        ff = pdf.root['/AcroForm']['/Fields']
+                        result["form_fields"] = len(ff)
+                except Exception:
+                    result["form_fields"] = None
+        except Exception as e:
+            # Non-fatal: continue even if pikepdf inspection fails
+            result.setdefault("structure_error", str(e))
+
+        # Detect incremental markers
         with open(modified_path, 'rb') as f:
             content = f.read()
         startxref = content.count(b'startxref')
         eof = content.count(b'%%EOF')
+        result["startxref_count"] = startxref
+        result["eof_count"] = eof
         result["incremental"] = (startxref > 1 or eof > 1)
-        texts = extract_text(modified_path)
-        snippets = [t[:120] + "..." if len(t) > 120 else t for t in texts]
-        result["text_snippets"] = snippets
+
+        # Extract text snippets for quick review
+        try:
+            texts = extract_text(modified_path)
+            snippets = []
+            for t in texts:
+                if not t:
+                    snippets.append("")
+                else:
+                    s = t.strip().replace("\n", " ")
+                    snippets.append(s[:240] + ("..." if len(s) > 240 else ""))
+            result["text_snippets"] = snippets
+        except Exception:
+            result["text_snippets"] = []
+
     except Exception as e:
         result["error"] = str(e)
+
     return result
 
 
 def print_verification_result(res):
-    """Prints human-friendly verification result to console."""
+    """Prints a rich, student-friendly verification result in English for traceability."""
     label = res.get("label")
     print(f"\n🔍 VERIFYING: {label}")
-    print("=" * 60)
-    if res.get("error"):
-        print("   ❌ ERROR:", res["error"])
-        print("=" * 60)
-        return
-    print(f"   Original Hash: {res.get('orig_hash')}")
-    print(f"   Modified Hash: {res.get('mod_hash')}")
-    print("   ✅ Content intact (Hash match)" if res.get("hash_match") else "   ❌ Content modified! (Hash mismatch)")
+    print("=" * 80)
+
+    # Basic file metadata
+    print(f"   📁 Modified file: {os.path.basename(res.get('modified') or '')}")
+    print(f"   🕒 Analysis time: {res.get('timestamp')}")
+    if res.get("modified_size"):
+        print(f"   📦 Size: {res.get('modified_size')}  |  Modified: {res.get('modified_mtime')}")
+    if res.get("modified_pages") is not None:
+        print(f"   📄 Pages: {res.get('modified_pages')}")
+
+    # Structural markers
+    print(f"   🔗 startxref count: {res.get('startxref_count')}  |  %%EOF count: {res.get('eof_count')}")
+    if res.get("incremental"):
+        print("   ⚠️  Incremental updates detected (possible appended changes).")
+
+    # Hash comparison
+    print("\n   🔐 Hashes:")
+    print(f"      - Original SHA256: {res.get('orig_hash') or 'N/A'}")
+    print(f"      - Modified SHA256: {res.get('mod_hash')}")
+    print("      - Integrity check:", "✔️ MATCH" if res.get("hash_match") else "❌ MISMATCH")
+
+    # Signatures
+    print("\n   🖊️ Signatures:")
     if res.get("signatures"):
         for idx, s in enumerate(res["signatures"], start=1):
-            print(
-                f"   Signature #{idx}: {'VALID' if s['ok'] else 'INVALID'} | Signer: {s['signer']} | time: {s.get('signing_time')}")
+            status = "✔️ VALID" if s.get("ok") else "❌ INVALID"
+            print(f"      Signature #{idx}: {status}")
+            print(f"         Signer: {s.get('signer')}")
+            print(f"         Signing time: {s.get('signing_time')}")
+            # If certificate info parsed:
+            if s.get("cert_info"):
+                ci = s["cert_info"]
+                print("         Certificate:")
+                print(f"            Subject: {ci.get('subject')}")
+                print(f"            Issuer: {ci.get('issuer')}")
+                print(f"            Serial: {ci.get('serial_number')}")
+                print(f"            Valid: {ci.get('not_before')} -> {ci.get('not_after')}")
+                print(f"            Fingerprint (SHA256): {ci.get('fingerprint_sha256')}")
     else:
-        print("   ⚠️  No digital signature detected.")
-    print(f"   startxref/incremental: {res.get('incremental')}")
-    print("\n   Text snippets (first 120 characters per page):")
-    for i, sn in enumerate(res.get("text_snippets", []), start=1):
+        print("      ⚠️  No digital signatures found.")
+
+    # Embedded certificates summary
+    if res.get("embedded_certificates"):
+        print("\n   🔎 Embedded certificate(s) found in signature(s):")
+        for i, c in enumerate(res["embedded_certificates"], start=1):
+            print(f"      Cert #{i}: {c.get('subject')} | Issuer: {c.get('issuer')}")
+
+    # Annotations / Form fields
+    print("\n   🧾 Annotations / Form fields:")
+    print(f"      - Annotations: {pformat(res.get('annotations'))}")
+    print(f"      - Form fields: {res.get('form_fields') or 0}")
+
+    # Text snippets for quick visual inspection
+    print("\n   📖 Extracted text snippets (first ~240 chars per page):")
+    for i, sn in enumerate(res.get("text_snippets", []) or [], start=1):
         print(f"      Page {i}: {sn}")
-    print("=" * 60)
+
+    # Errors / final interpretation
+    if res.get("error"):
+        print("\n   ❌ ERROR:", res.get("error"))
+    print("\n   🧭 FINAL INTERPRETATION:")
+    if res.get("error"):
+        print("      ❌ Document verification failed or incomplete.")
+    elif not res.get("signatures"):
+        print("      ⚠️ Document appears intact (hash ok) but has NO digital signature — not authenticated.")
+    elif all(s.get("ok") for s in res["signatures"]) and not res.get("incremental"):
+        print("      ✔️ Document is signed and verification passed.")
+    else:
+        print("      ⚠️ Document has signatures but there are issues (invalid signatures or incremental updates).")
+
+    print("=" * 80)
 
 
 def write_html_report(results, outpath):
     """
-    Writes a simple HTML report summarizing verification results.
+    Writes an enhanced HTML report with extra columns for traceability.
     """
-
     def color_for(res):
         if res.get("error"): return "#ffcccc"
         if not res.get("signatures"): return "#fff2cc"
@@ -412,30 +573,44 @@ def write_html_report(results, outpath):
     for r in results:
         color = color_for(r)
         signer_info = "<br>".join(
-            [f"{s['signer']} ({'OK' if s['ok'] else 'INVALID'})" for s in r.get("signatures", [])]) or "None"
+            [f"{s.get('signer','Unknown')} ({'OK' if s.get('ok') else 'INVALID'})" for s in r.get("signatures", [])]) or "None"
+        certs = "<br>".join([f"{c.get('subject')}<br>Issuer: {c.get('issuer')}<br>FP: {c.get('fingerprint_sha256')[:32]}..." for c in r.get("embedded_certificates", [])]) or "None"
         snippets = "<br>".join([f"Page {i + 1}: {s}" for i, s in enumerate(r.get("text_snippets", []))]) or "None"
         rows.append(f"""
         <tr style="background:{color}">
             <td>{r.get('label')}</td>
-            <td>{os.path.basename(r.get('original', ''))}</td>
-            <td>{os.path.basename(r.get('modified', ''))}</td>
+            <td>{os.path.basename(r.get('modified',''))}</td>
+            <td>{r.get('modified_size') or ''}</td>
+            <td>{r.get('modified_mtime') or ''}</td>
+            <td>{r.get('modified_pages') or ''}</td>
             <td>{r.get('orig_hash') or 'N/A'}</td>
             <td>{r.get('mod_hash') or 'N/A'}</td>
             <td>{'Yes' if r.get('hash_match') else 'No'}</td>
             <td>{signer_info}</td>
+            <td>{certs}</td>
             <td>{'Yes' if r.get('incremental') else 'No'}</td>
             <td>{r.get('error') or ''}</td>
             <td style="max-width:300px; white-space:normal;">{snippets}</td>
         </tr>
         """)
     html = f"""
-    <html><head><meta charset="utf-8"><title>Verification Report</title></head>
+    <html><head><meta charset="utf-8"><title>Verification Report</title>
+    <style>
+      body {{ font-family: Arial, sans-serif; }}
+      table {{ border-collapse: collapse; width: 100%; }}
+      th, td {{ border: 1px solid #ddd; padding: 8px; vertical-align: top; }}
+      th {{ background:#333; color:#fff; }}
+    </style>
+    </head>
     <body>
       <h2>Verification Report - {now_ts()}</h2>
-      <table border="1" cellpadding="6" cellspacing="0">
+      <table>
         <thead>
-          <tr><th>Label</th><th>Original</th><th>Modified</th><th>Orig Hash</th><th>Mod Hash</th>
-          <th>Hash Match</th><th>Signatures</th><th>Incremental</th><th>Error</th><th>Text Snippets</th></tr>
+          <tr>
+            <th>Label</th><th>File</th><th>Size</th><th>Modified</th><th>Pages</th>
+            <th>Orig Hash</th><th>Mod Hash</th><th>Hash Match</th><th>Signatures</th>
+            <th>Embedded Certs</th><th>Incremental</th><th>Error</th><th>Text Snippets</th>
+          </tr>
         </thead>
         <tbody>
           {''.join(rows)}
@@ -760,6 +935,7 @@ def main():
         validate_certificate_info(args.file)
     else:
         parser.print_help()
+
 
 if __name__ == "__main__":
     main()
