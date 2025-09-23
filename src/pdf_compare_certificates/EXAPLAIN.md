@@ -1,33 +1,3 @@
-La función `incremental_rewrite_attack` es un **contraejemplo** diseñado para demostrar un método de ataque diferente y menos efectivo.
-
-Su propósito es mostrar qué sucede cuando un atacante ignora la función de actualización incremental y, en su lugar, intenta **reescribir todo el archivo PDF desde cero**.
-
----
-
-### **Cómo Funciona `incremental_rewrite_attack` 🛠️**
-
-1.  **Abre el PDF Firmado**: Lee el contenido del PDF original firmado.
-2.  **Crea un Nuevo PDF desde Cero**: Utiliza `pypdf` para crear un nuevo documento.
-3.  **Añade las Páginas Viejas**: Copia las páginas del documento original al nuevo documento.
-4.  **Añade la Página de Ataque**: Inserta la nueva página ("GRADE: 20/20") al final del nuevo documento.
-5.  **Guarda el Nuevo PDF**: Escribe el documento completo en un nuevo archivo de salida.
-
----
-
-### **¿Por Qué Es un Contraejemplo? 🚫**
-
-El problema de este enfoque es que **invalida la firma digital**.
-
-Las firmas digitales en PDF son sensibles a cada byte del archivo. Al reescribir el documento por completo, se cambia la estructura interna, los `offsets` de los objetos y, por lo tanto, la integridad del archivo. La firma digital, que fue calculada sobre la estructura y los bytes originales, ya no coincide con el nuevo archivo.
-
-Un lector de PDF, al intentar verificar la firma de este nuevo archivo, detectará inmediatamente que el documento ha sido alterado y mostrará una alerta de "firma inválida", "documento alterado" o un error similar. Esto no demuestra la vulnerabilidad del guardado incremental, sino la robustez de la verificación de firmas digitales frente a una reescritura completa del documento.
-
-En resumen, la función `incremental_rewrite_attack` existe para que puedas compararla con `incremental_pikepdf_attack` y **demostrar la diferencia** entre un ataque que rompe la firma y un ataque que se aprovecha de la función de guardado incremental para mantener la firma aparentemente válida.
-
-¡Excelente idea! Un `README` claro es crucial para un taller. Aquí tienes una explicación detallada de cómo funciona la función `incremental_pikepdf_attack` que puedes usar para los estudiantes. Está diseñada para ser precisa y fácil de entender.
-
----
-
 ### **Cómo Funciona `incremental_pikepdf_attack` 🕵️‍♂️**
 
 La función `incremental_pikepdf_attack` es la pieza central de la demostración. Su objetivo es alterar un PDF firmado digitalmente **sin invalidar la firma a los ojos de los validadores más antiguos o menos rigurosos**. A continuación, se detalla el proceso paso a paso.
@@ -56,3 +26,36 @@ El hecho de que tu código obtenga el mensaje de "Signature INVALID" es la prueb
 #### **En Resumen**
 
 La función `incremental_pikepdf_attack` no busca pasar desapercibida para todos los validadores, sino demostrar que es posible **añadir contenido a un PDF firmado sin romper su estructura original**, lo cual es una grave debilidad de seguridad en los lectores de PDF que no validan los cambios incrementales.
+
+La función `incremental_rewrite_attack` es un **contraejemplo** diseñado para demostrar un método de ataque diferente y menos efectivo.
+
+Su propósito es mostrar qué sucede cuando un atacante ignora la función de actualización incremental y, en su lugar, intenta **reescribir todo el archivo PDF desde cero**.
+
+---
+
+### **Cómo Funciona `incremental_rewrite_attack` 🕵️‍♂️**
+
+### **Cómo Funciona `incremental_rewrite_attack` 🛠️**
+
+1.  **Abre el PDF Firmado**: Lee el contenido del PDF original firmado.
+2.  **Crea un Nuevo PDF desde Cero**: Utiliza `pypdf` para crear un nuevo documento.
+3.  **Añade las Páginas Viejas**: Copia las páginas del documento original al nuevo documento.
+4.  **Añade la Página de Ataque**: Inserta la nueva página ("GRADE: 20/20") al final del nuevo documento.
+5.  **Guarda el Nuevo PDF**: Escribe el documento completo en un nuevo archivo de salida.
+
+---
+
+### **¿Por Qué Es un Contraejemplo? 🚫**
+
+El problema de este enfoque es que **invalida la firma digital**.
+
+Las firmas digitales en PDF son sensibles a cada byte del archivo. Al reescribir el documento por completo, se cambia la estructura interna, los `offsets` de los objetos y, por lo tanto, la integridad del archivo. La firma digital, que fue calculada sobre la estructura y los bytes originales, ya no coincide con el nuevo archivo.
+
+Un lector de PDF, al intentar verificar la firma de este nuevo archivo, detectará inmediatamente que el documento ha sido alterado y mostrará una alerta de "firma inválida", "documento alterado" o un error similar. Esto no demuestra la vulnerabilidad del guardado incremental, sino la robustez de la verificación de firmas digitales frente a una reescritura completa del documento.
+
+En resumen, la función `incremental_rewrite_attack` existe para que puedas compararla con `incremental_pikepdf_attack` y **demostrar la diferencia** entre un ataque que rompe la firma y un ataque que se aprovecha de la función de guardado incremental para mantener la firma aparentemente válida.
+
+¡Excelente idea! Un `README` claro es crucial para un taller. Aquí tienes una explicación detallada de cómo funciona la función `incremental_pikepdf_attack` que puedes usar para los estudiantes. Está diseñada para ser precisa y fácil de entender.
+
+---
+
